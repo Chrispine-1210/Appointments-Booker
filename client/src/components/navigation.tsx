@@ -1,17 +1,28 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Provider } from "@shared/schema";
 
 export default function Navigation() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [location] = useLocation();
-  const { user } = useAuth();
+  const { user, providerId } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const logout = async () => {
+    try {
+      await apiRequest("POST", "/api/auth/logout");
+      queryClient.clear();
+      window.location.assign("/login");
+    } catch { toast({ title: "Sign-out failed", description: "Please try again.", variant: "destructive" }); }
+  };
 
   const { data: provider } = useQuery<Provider>({
-    queryKey: ["/api/providers/1"],
-    enabled: !!user,
+    queryKey: [`/api/providers/${providerId}`],
+    enabled: !!providerId,
   });
 
   const displayName = provider ? `${provider.title} ${provider.name}`.trim() : (user as any)?.firstName || "User";
@@ -75,7 +86,7 @@ export default function Navigation() {
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Professional</span>
                   </div>
                   <button 
-                    onClick={() => window.location.href = "/api/logout"}
+                    onClick={logout}
                     className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-red-50 hover:text-red-600 transition-all active:scale-95"
                     title="Sign Out"
                   >
@@ -139,7 +150,7 @@ export default function Navigation() {
                   {displayName}
                 </div>
                 <button 
-                  onClick={() => window.location.href = "/api/logout"}
+                  onClick={logout}
                   className="w-full bg-slate-200 text-slate-800 px-4 py-2 rounded-lg hover:bg-slate-300 transition-colors font-medium block text-center"
                   data-testid="button-sign-out-mobile"
                 >

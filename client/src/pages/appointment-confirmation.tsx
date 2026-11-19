@@ -55,7 +55,7 @@ export default function AppointmentConfirmation() {
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg p-8 text-white mb-8 text-center">
           <i className="fas fa-check-circle text-5xl mb-4"></i>
           <h1 className="text-3xl font-bold mb-2">Appointment Confirmed!</h1>
-          <p className="text-green-100">Your appointment has been successfully booked. Check your email for details.</p>
+          <p className="text-green-100">Your appointment has been saved. Keep these details for your visit.</p>
         </div>
 
         {/* Confirmation Details */}
@@ -117,11 +117,11 @@ export default function AppointmentConfirmation() {
           <ul className="space-y-3">
             <li className="flex items-start">
               <i className="fas fa-check-circle text-blue-600 mr-3 mt-1 flex-shrink-0"></i>
-              <span className="text-blue-900"><strong>Confirmation Email</strong> - You'll receive a confirmation email with appointment details</span>
+              <span className="text-blue-900"><strong>Booking details</strong> - Save this page or print it for your records</span>
             </li>
             <li className="flex items-start">
               <i className="fas fa-check-circle text-blue-600 mr-3 mt-1 flex-shrink-0"></i>
-              <span className="text-blue-900"><strong>Appointment Reminder</strong> - We'll send you a reminder 24 hours before your appointment</span>
+              <span className="text-blue-900"><strong>Reminder</strong> - Add the appointment to your own calendar</span>
             </li>
             <li className="flex items-start">
               <i className="fas fa-check-circle text-blue-600 mr-3 mt-1 flex-shrink-0"></i>
@@ -141,8 +141,8 @@ export default function AppointmentConfirmation() {
               <i className="fas fa-search mr-2"></i>Book Another Appointment
             </button>
           </Link>
-          <button className="flex-1 border border-slate-300 text-slate-700 py-3 rounded-lg hover:bg-slate-50 transition-colors font-semibold">
-            <i className="fas fa-download mr-2"></i>Download Confirmation
+          <button onClick={() => window.print()} className="flex-1 border border-slate-300 text-slate-700 py-3 rounded-lg hover:bg-slate-50 transition-colors font-semibold">
+            <i className="fas fa-download mr-2"></i>Print Confirmation
           </button>
         </div>
       </div>

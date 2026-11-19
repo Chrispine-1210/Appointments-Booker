@@ -1,3 +1,4 @@
+import { sumAmounts } from "@shared/money";
 import { useQuery } from "@tanstack/react-query";
 import type { Analytics, Appointment } from "@shared/schema";
 import { 
@@ -21,22 +22,19 @@ export default function AnalyticsDashboard({ providerId }: AnalyticsDashboardPro
   const today = new Date().toISOString().split('T')[0];
   
   const { data: todayAnalytics } = useQuery<Analytics>({
-    queryKey: [`/api/analytics/${providerId}`, today],
+    queryKey: [`/api/analytics/${providerId}`, { date: today }],
   });
 
   const { data: appointments = [] } = useQuery<Appointment[]>({
     queryKey: [`/api/providers/${providerId}/appointments`],
   });
 
-  const chartData = [
-    { name: 'Mon', bookings: 4, revenue: 240 },
-    { name: 'Tue', bookings: 7, revenue: 420 },
-    { name: 'Wed', bookings: 5, revenue: 300 },
-    { name: 'Thu', bookings: 8, revenue: 480 },
-    { name: 'Fri', bookings: 12, revenue: 720 },
-    { name: 'Sat', bookings: 9, revenue: 540 },
-    { name: 'Sun', bookings: 6, revenue: 360 },
-  ];
+  const chartData = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(Date.now() - (6 - index) * 86400000);
+    const date = day.toLocaleDateString('en-CA', { timeZone: 'Africa/Blantyre' });
+    const dayBookings = appointments.filter(appointment => appointment.appointmentDate === date);
+    return { name: day.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'Africa/Blantyre' }), bookings: dayBookings.length, revenue: Number(sumAmounts(dayBookings.filter(appointment => appointment.paymentStatus === "completed").map(appointment => appointment.paymentAmount))) };
+  });
 
   const metrics = [
     {
@@ -44,28 +42,28 @@ export default function AnalyticsDashboard({ providerId }: AnalyticsDashboardPro
       value: appointments.length,
       icon: "fa-calendar-check",
       color: "blue",
-      trend: "+12%",
+      trend: "Recorded",
     },
     {
       label: "Completed Today",
       value: todayAnalytics?.completedAppointments || 0,
       icon: "fa-check-circle",
       color: "green",
-      trend: "+5%",
+      trend: "Recorded",
     },
     {
-      label: "Revenue Today",
-      value: `$${todayAnalytics?.totalRevenue || "0.00"}`,
+      label: "Collections Today",
+      value: `MWK ${todayAnalytics?.totalRevenue || "0.00"}`,
       icon: "fa-dollar-sign",
       color: "purple",
-      trend: "+18%",
+      trend: "Settled only",
     },
     {
       label: "Avg Rating",
       value: todayAnalytics?.averageRating || "0.00",
       icon: "fa-star",
       color: "amber",
-      trend: "Stable",
+      trend: "Recorded",
     },
   ];
 
@@ -110,7 +108,7 @@ export default function AnalyticsDashboard({ providerId }: AnalyticsDashboardPro
             <h3 className="font-black text-slate-800 tracking-tight">Booking Trends</h3>
             <select className="text-xs font-bold bg-slate-50 border-none rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-primary/20">
               <option>Last 7 Days</option>
-              <option>Last 30 Days</option>
+
             </select>
           </div>
           <div className="h-[300px] w-full">
@@ -153,7 +151,7 @@ export default function AnalyticsDashboard({ providerId }: AnalyticsDashboardPro
         </div>
 
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-          <h3 className="font-black text-slate-800 tracking-tight mb-6">Revenue Breakdown</h3>
+          <h3 className="font-black text-slate-800 tracking-tight mb-6">Recorded Collections</h3>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>

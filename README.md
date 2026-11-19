@@ -1,46 +1,75 @@
 # BookingPro / Appointments-Booker
 
-An appointment scheduling prototype built with React, TypeScript, Express, and Drizzle schema definitions.
+An appointment scheduling application built with React, TypeScript, Express, PostgreSQL and Drizzle.
 
-**Current status: development prototype. Application records are stored in memory and disappear on restart. Production startup is blocked until durable storage is implemented.** A database URL alone does not change this.
+## Implemented
 
-## Local development
+- Email/password registration and login, salted scrypt credentials, session rotation, database-backed session invalidation and shared login throttling.
+- Transactional provider onboarding: professional details, working hours and a first service are saved together.
+- Provider context derived from the authenticated account throughout the dashboard, settings, tasks, memos, booking form and calendar.
+- PostgreSQL persistence for accounts, credentials, sessions, profiles, services, appointments, tasks, memos and reviews.
+- Database-enforced booking intervals, matching services, opening hours and overlap exclusion across independent application processes.
+- Client booking history and session-protected guest confirmations. Collections remain separate from unpaid booking values.
 
-Use Node.js 22.12 or later.
+## Local setup
+
+Use Node.js 22.12 or later and PostgreSQL with the `btree_gist` extension available.
 
 ```sh
 npm ci
+cp .env.example .env
+```
+
+Set `DATABASE_URL` in `.env` to the application database. Set `DATABASE_URL_UNPOOLED` for migrations when the application URL is pooled. Run:
+
+```sh
+npm run db:migrate
 npm run dev
 ```
 
-Open `http://localhost:5000`. Set `PORT` to change the port. Public discovery and booking pages work without a database. Private APIs return HTTP 401 until real authentication is configured; `/api/login` returns HTTP 503 with configuration guidance when unavailable.
+Open `http://localhost:5000/login`, create your account, complete onboarding, then use the dashboard. No preset accounts or passwords are shipped. Public provider discovery is at `/find`; the public booking page is `/book/:providerId`.
 
-See `.env.example` for configuration variable names. The current sign-in adapter requires a genuine Replit OIDC application (`REPL_ID`, `REPLIT_DOMAINS`). There is no demo identity or development authentication bypass. PostgreSQL sessions require the `sessions` table and a strong session secret in production; development sessions use an ephemeral process secret when none is supplied.
+Without `DATABASE_URL`, development uses explicit, volatile sample storage. Production requires PostgreSQL and never falls back to memory. Empty PostgreSQL databases contain no sample customers or fabricated bookings.
+
+The migrations establish a fresh baseline. An existing database with an untracked schema requires an adoption review before these migrations are applied. The application validates schema readiness at startup and does not run migrations automatically.
+
+## Production configuration
+
+Required variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL application connection; Neon keeps the existing serverless driver |
+| `DATABASE_URL_UNPOOLED` | Direct migration connection, when the application URL is pooled |
+| `SESSION_SECRET` | Stable, random secret of at least 32 characters, shared across workers |
+| `APP_ORIGIN` | Exact public HTTPS origin, without path or trailing slash |
+| `TRUST_PROXY` | Trusted proxy hop count; defaults to one in production |
+| `PORT` | Application port; defaults to 5000 |
+
+Generate a secret locally with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and store it in the deployment environment.
+
+```sh
+npm run build
+npm start
+```
+
+Production checks require a migrated database, the overlap constraint, a strong secret and an HTTPS origin. Configure the reverse proxy hop count for the actual deployment network. Build output is generated from source and ignored by Git.
 
 ## Verification
 
 ```sh
-npm run check
-npm test
-npm run build
-# Or all three:
 npm run verify
+# Dedicated disposable database; name must begin appointments_test:
+TEST_DATABASE_URL=postgresql://.../appointments_test npm run test:postgres
+npm audit --omit=dev
 ```
 
-The tests use isolated in-memory storage and an injected test authentication adapter. They exercise the real HTTP routes, including anonymous denial, provider ownership, record mutation, public booking validation, payment-field rejection, concurrent overlap, cancellation, rescheduling, and error recovery. They do not certify live OIDC or PostgreSQL behavior.
+`npm run verify` runs TypeScript, 21 HTTP/query/security regressions and the production build. The PostgreSQL suite adds 13 integration tests, including separate API processes, application restart, persistent sessions, onboarding rollback, guest privacy, logout replay and secure production cookies. CI provisions PostgreSQL and runs both suites plus the production dependency audit.
 
-Generated `dist` output is ignored. Deployments must build from source. `npm start` deliberately refuses the current volatile storage implementation.
+See [the verification record](docs/ENGINEERING_BASELINE.md).
 
-## Access model
+## Remaining delivery work
 
-- Public: provider discovery, profiles, services, opening times, availability, reviews, appointment creation, and health status.
-- Authenticated provider owner: appointments, memos, tasks, analytics, service creation, profile changes, and rating recalculation.
-- New provider ownership comes from the verified session subject. Client-supplied ownership is rejected. Existing sample records remain unowned.
-- Public bookings use the provider's active service and price. Clients cannot mark a booking as paid. Overlap checks are atomic within one Node.js process only.
-- Review submissions remain unavailable until client-to-appointment ownership is implemented.
+A live database and hosting environment have not been configured for this repository. Browser interactions and a deployed runtime remain unverified. Email verification, password recovery, transactional messages, reminders, payment processing and verified review submission remain delivery work. The messages and notifications pages clearly show that those services are unavailable. Working times and displayed prices currently use Malawi time and MWK.
 
-## Known delivery gaps
-
-The interface includes pages for messages, notifications, calendar, reviews, and personal bookings that are incomplete or use placeholder data. Several provider screens still refer to sample provider `1`; the API denies access to that unowned sample instead of granting access to arbitrary users. Confirmation lookup, personal booking history, provider onboarding and dynamic provider context require implementation. Email, reminders, payments, maps and production deployment are not verified.
-
-See [the engineering baseline](docs/ENGINEERING_BASELINE.md) for evidence and the next implementation sequence. The previous README's claims of a fully functional production platform were not supported by the source.
+The production dependency audit is clean for this lockfile. Four moderate findings remain in development-only tooling, and the build reports a large client bundle. These results do not certify a full production security review or backup restoration.

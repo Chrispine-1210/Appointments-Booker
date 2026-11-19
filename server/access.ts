@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import type { IStorage } from "./storage";
-import { authenticatedUserId } from "./replitAuth";
+import { authenticatedUserId } from "./auth";
 
 export function positiveId(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -49,7 +49,8 @@ export function recordAccess(store: IStorage, kind: "Appointment" | "Memo" | "Ta
 export const sameOrigin: RequestHandler = (req, res, next) => {
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
   const origin = req.get("origin");
-  if (req.get("sec-fetch-site") === "cross-site" || (origin && origin !== `${req.protocol}://${req.get("host")}`)) {
+  const expected = process.env.APP_ORIGIN ?? `${req.protocol}://${req.get("host")}`;
+  if (req.get("sec-fetch-site") === "cross-site" || (origin && origin !== expected)) {
     return res.status(403).json({ message: "Cross-origin writes are not allowed" });
   }
   next();

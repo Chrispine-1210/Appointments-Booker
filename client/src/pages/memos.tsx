@@ -1,3 +1,4 @@
+import { useAuth } from "@/hooks/useAuth";
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -18,20 +19,22 @@ import type { Memo } from "@shared/schema";
 const memoSchema = z.object({
   title: z.string().min(1, "Title is required"),
   content: z.string().min(1, "Content is required"),
-  category: z.string().default("general"),
-  isImportant: z.boolean().default(false),
+  category: z.string(),
+  isImportant: z.boolean(),
 });
 
 type MemoFormData = z.infer<typeof memoSchema>;
 
 export default function Memos() {
+  const { providerId } = useAuth();
   const [selectedMemo, setSelectedMemo] = useState<Memo | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: memos = [], isLoading } = useQuery<Memo[]>({
-    queryKey: ["/api/providers/1/memos"],
+    queryKey: [`/api/providers/${providerId}/memos`],
+    enabled: !!providerId,
   });
 
   const form = useForm<MemoFormData>({
@@ -48,7 +51,7 @@ export default function Memos() {
     mutationFn: async (data: MemoFormData) => {
       return apiRequest("POST", "/api/memos", {
         ...data,
-        providerId: 1,
+        providerId: providerId!,
       });
     },
     onSuccess: () => {
@@ -58,7 +61,7 @@ export default function Memos() {
       });
       form.reset();
       setIsDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/providers/1/memos"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/memos`] });
     },
     onError: (error: any) => {
       toast({
@@ -79,7 +82,7 @@ export default function Memos() {
         description: "Your memo has been updated successfully.",
       });
       setSelectedMemo(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/providers/1/memos"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/memos`] });
     },
     onError: (error: any) => {
       toast({
@@ -99,7 +102,7 @@ export default function Memos() {
         title: "Memo Deleted",
         description: "Your memo has been deleted successfully.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers/1/memos"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/memos`] });
     },
     onError: (error: any) => {
       toast({

@@ -1,29 +1,27 @@
+import { sumAmounts } from "@shared/money";
+import { useAuth } from "@/hooks/useAuth";
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import type { Appointment } from "@shared/schema";
 
 export default function ProviderStats() {
+  const { providerId } = useAuth();
   const today = format(new Date(), 'yyyy-MM-dd');
   
   const { data: allAppointments = [] } = useQuery<Appointment[]>({
-    queryKey: ["/api/providers/1/appointments"],
+    queryKey: [`/api/providers/${providerId}/appointments`],
+    enabled: !!providerId,
   });
 
   const { data: todayAppointments = [] } = useQuery<Appointment[]>({
-    queryKey: ["/api/providers/1/appointments", { date: today }],
+    queryKey: [`/api/providers/${providerId}/appointments`, { date: today }],
+    enabled: !!providerId,
   });
 
-  // Calculate week's appointments (simplified - just using last 7 days of data)
-  const thisWeek = allAppointments.slice(0, 24).length;
-  
-  // Calculate revenue (simplified)
-  const revenue = allAppointments.reduce((total, appointment) => {
-    // Assuming $150 for consultation, $75 for follow-up (matching design)
-    return total + (appointment.clientName ? 150 : 75); // Simplified logic
-  }, 0);
-
-  // Calculate no-shows (simplified)
+  const weekStart = format(new Date(Date.now() - 6 * 86400000), 'yyyy-MM-dd');
+  const thisWeek = allAppointments.filter(a => a.appointmentDate >= weekStart && a.appointmentDate <= today).length;
+  const revenue = sumAmounts(allAppointments.filter(a => a.paymentStatus === 'completed').map(a => a.paymentAmount));
   const noShows = allAppointments.filter(a => a.status === 'cancelled').length;
 
   const stats = [
@@ -40,13 +38,13 @@ export default function ProviderStats() {
       color: "text-accent"
     },
     {
-      label: "Revenue",
-      value: `$${revenue.toLocaleString()}`,
+      label: "Collections",
+      value: `MWK ${revenue}`,
       icon: "fas fa-dollar-sign", 
       color: "text-amber-500"
     },
     {
-      label: "No-Shows",
+      label: "Cancelled",
       value: noShows.toString(),
       icon: "fas fa-user-times",
       color: "text-red-500"

@@ -21,9 +21,20 @@ import {
   type User,
   type UpsertUser
 } from "@shared/schema";
+import type session from "express-session";
 import { BookingError, validDate, timeMinutes } from "./scheduling";
 
 export interface IStorage {
+  readonly kind: "memory" | "postgres";
+  readonly sessionStore?: session.Store;
+  close(): Promise<void>;
+  assertReady(): Promise<void>;
+  registerUser(input: { email: string; firstName: string; lastName: string; passwordHash: string }): Promise<User>;
+  getCredential(email: string): Promise<{ userId: string; passwordHash: string } | undefined>;
+  consumeAuthAttempt(key: string, windowMs: number, limit: number): Promise<boolean>;
+  getProviderByOwnerId(userId: string): Promise<Provider | undefined>;
+  onboardProvider(profile: InsertProvider, service: Omit<InsertService, "providerId">, userId: string): Promise<{ provider: Provider; service: Service }>;
+  getAppointmentsByClient(userId: string): Promise<Appointment[]>;
   // User operations
   // (IMPORTANT) these user operations are mandatory for Replit Auth.
   getUser(id: string): Promise<User | undefined>;
@@ -83,6 +94,33 @@ export interface IStorage {
 
 // Development storage only. All records disappear when the process restarts.
 export class MemoryStorage implements IStorage {
+  readonly kind = "memory" as const;
+  private credentials = new Map<string, { userId: string; passwordHash: string }>();
+  private attempts = new Map<string, { count: number; expiresAt: number }>();
+  async close() {}
+  async assertReady() { assertStorageReady(); }
+  async registerUser(input: { email: string; firstName: string; lastName: string; passwordHash: string }): Promise<User> {
+    if (this.credentials.has(input.email) || [...this.users.values()].some(user => user.email === input.email)) throw new BookingError("Account cannot be created with these details", 409);
+    const user: User = { id: crypto.randomUUID(), email: input.email, firstName: input.firstName, lastName: input.lastName, profileImageUrl: null, createdAt: new Date(), updatedAt: new Date() };
+    this.users.set(user.id, user);
+    this.credentials.set(input.email, { userId: user.id, passwordHash: input.passwordHash });
+    return user;
+  }
+  async getCredential(email: string) { return this.credentials.get(email); }
+  async consumeAuthAttempt(key: string, windowMs: number, limit: number) {
+    const now = Date.now();
+    for (const [oldKey, entry] of this.attempts) if (entry.expiresAt <= now) this.attempts.delete(oldKey);
+    const entry = this.attempts.get(key) ?? { count: 0, expiresAt: now + windowMs };
+    entry.count++;
+    this.attempts.set(key, entry);
+    return entry.count <= limit;
+  }
+  async getProviderByOwnerId(userId: string) { return [...this.providers.values()].find(provider => provider.ownerUserId === userId); }
+  async onboardProvider(profile: InsertProvider, service: Omit<InsertService, "providerId">, userId: string) {
+    const provider = await this.createProvider(profile, userId);
+    return { provider, service: await this.createService({ ...service, providerId: provider.id }) };
+  }
+  async getAppointmentsByClient(userId: string) { return [...this.appointments.values()].filter(appointment => appointment.clientUserId === userId); }
   // User operations
   // (IMPORTANT) these user operations are mandatory for Replit Auth.
   // Using in-memory storage for now to avoid database authentication issues
@@ -271,6 +309,7 @@ export class MemoryStorage implements IStorage {
 
   // Provider methods
   async createProvider(insertProvider: InsertProvider, ownerUserId: string): Promise<Provider> {
+    if ([...this.providers.values()].some(provider => provider.ownerUserId === ownerUserId || provider.email === insertProvider.email)) throw new BookingError("A provider profile already exists", 409);
     const id = this.currentId++;
     const provider: Provider = { 
       ...insertProvider, 
@@ -386,6 +425,9 @@ export class MemoryStorage implements IStorage {
     const appointment: Appointment = { 
       ...insertAppointment, 
       id, 
+      clientUserId: insertAppointment.clientUserId ?? null,
+      startsAt: new Date(`${insertAppointment.appointmentDate}T${insertAppointment.startTime}:00Z`),
+      endsAt: new Date(`${insertAppointment.appointmentDate}T${insertAppointment.endTime}:00Z`),
       status: insertAppointment.status || 'pending',
       paymentStatus: insertAppointment.paymentStatus ?? "pending",
       paymentAmount: insertAppointment.paymentAmount ?? null,
@@ -598,8 +640,6 @@ export class MemoryStorage implements IStorage {
     }
   }
 }
-
-export const storage = new MemoryStorage();
 
 export function assertStorageReady(environment = process.env.NODE_ENV) {
   if (environment === "production") {

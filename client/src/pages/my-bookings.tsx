@@ -16,7 +16,7 @@ export default function MyBookings() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-slate-800 mb-2">My Appointments</h1>
-          <p className="text-slate-600">View and manage all your bookings in one place</p>
+          <p className="text-slate-600">View your bookings and appointment details</p>
         </div>
 
         {isLoading ? (
@@ -79,12 +79,7 @@ export default function MyBookings() {
                   </div>
                   
                   <div className="flex gap-2">
-                    <button className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors text-slate-700 font-medium">
-                      <i className="fas fa-edit mr-2"></i>Edit
-                    </button>
-                    <button className="px-4 py-2 border border-red-300 rounded-lg hover:bg-red-50 transition-colors text-red-700 font-medium">
-                      <i className="fas fa-trash mr-2"></i>Cancel
-                    </button>
+                    <Link href={`/confirmation/${appointment.id}`} className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 font-medium">View details</Link>
                   </div>
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import { useAuth } from "@/hooks/useAuth";
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -18,14 +19,15 @@ import type { Task } from "@shared/schema";
 const taskSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  status: z.string().default("pending"),
-  priority: z.string().default("medium"),
+  status: z.string(),
+  priority: z.string(),
   dueDate: z.string().optional(),
 });
 
 type TaskFormData = z.infer<typeof taskSchema>;
 
 export default function Tasks() {
+  const { providerId } = useAuth();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -33,7 +35,8 @@ export default function Tasks() {
   const queryClient = useQueryClient();
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
-    queryKey: ["/api/providers/1/tasks"],
+    queryKey: [`/api/providers/${providerId}/tasks`],
+    enabled: !!providerId,
   });
 
   const form = useForm<TaskFormData>({
@@ -51,7 +54,7 @@ export default function Tasks() {
     mutationFn: async (data: TaskFormData) => {
       return apiRequest("POST", "/api/tasks", {
         ...data,
-        providerId: 1,
+        providerId: providerId!,
       });
     },
     onSuccess: () => {
@@ -61,7 +64,7 @@ export default function Tasks() {
       });
       form.reset();
       setIsDialogOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/providers/1/tasks"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/tasks`] });
     },
     onError: (error: any) => {
       toast({
@@ -82,7 +85,7 @@ export default function Tasks() {
         description: "Your task has been updated successfully.",
       });
       setSelectedTask(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/providers/1/tasks"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/tasks`] });
     },
     onError: (error: any) => {
       toast({
@@ -102,7 +105,7 @@ export default function Tasks() {
         title: "Task Deleted",
         description: "Your task has been deleted successfully.",
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/providers/1/tasks"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/tasks`] });
     },
     onError: (error: any) => {
       toast({

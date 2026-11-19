@@ -159,7 +159,7 @@ test("cross-origin writes fail and unknown API endpoints return JSON 404", async
   const f = await fixture();
   try {
     assert.equal((await f.request("/api/appointments", "POST", f.booking, undefined, { origin: "https://attacker.example" })).status, 403);
-    const response = await f.request("/api/appointments/my");
+    const response = await f.request("/api/no-such-route");
     assert.equal(response.status, 404);
     assert.equal((await response.json()).message, "API route not found");
   } finally { await f.close(); }
@@ -181,7 +181,7 @@ test("production cannot silently use volatile development records", () => {
   assert.doesNotThrow(() => assertStorageReady("development"));
 });
 
-test("the default auth adapter fails closed when sign-in is unconfigured", async () => {
+test("the default auth adapter requires a session and provides the login entrypoint", async () => {
   const { server } = await createApp();
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -189,7 +189,7 @@ test("the default auth adapter fails closed when sign-in is unconfigured", async
   try {
     assert.equal((await fetch(`${base}/api/auth/user`)).status, 401);
     assert.equal((await fetch(`${base}/api/providers/1/memos`)).status, 401);
-    assert.equal((await fetch(`${base}/api/login`)).status, 503);
+    assert.equal((await fetch(`${base}/api/login`, { redirect: "manual" })).status, 302);
     assert.equal((await fetch(`${base}/api/providers`)).status, 200);
   } finally {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
@@ -211,4 +211,30 @@ test("query-key date and service parameters reach the API URL", async () => {
     globalThis.fetch = originalFetch;
     globalThis.window = originalWindow;
   }
+});
+
+test("production login requires durable sessions, a strong secret and a canonical HTTPS origin", async () => {
+  const { authConfiguration } = await import("./auth");
+  const previous = { node: process.env.NODE_ENV, secret: process.env.SESSION_SECRET, origin: process.env.APP_ORIGIN };
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.SESSION_SECRET = "too-short";
+    process.env.APP_ORIGIN = "https://booking.example";
+    assert.throws(() => authConfiguration(new MemoryStorage()), /SESSION_SECRET/);
+    process.env.SESSION_SECRET = "test-secret-at-least-thirty-two-characters";
+    process.env.APP_ORIGIN = "https://booking.example/path";
+    assert.throws(() => authConfiguration(new MemoryStorage()), /APP_ORIGIN/);
+    process.env.APP_ORIGIN = "https://booking.example";
+    assert.throws(() => authConfiguration(new MemoryStorage()), /PostgreSQL/);
+  } finally {
+    for (const [key, value] of Object.entries({ NODE_ENV: previous.node, SESSION_SECRET: previous.secret, APP_ORIGIN: previous.origin })) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test("collection totals preserve exact decimal amounts", async () => {
+  const { sumAmounts } = await import("../shared/money");
+  assert.equal(sumAmounts(["0.10", "0.20", null]), "0.30");
+  assert.equal(sumAmounts(["99999999.99", "99999999.99", "0.02"]), "200000000.00");
 });

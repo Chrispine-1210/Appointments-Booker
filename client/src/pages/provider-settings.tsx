@@ -1,3 +1,4 @@
+import { useAuth } from "@/hooks/useAuth";
 import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -30,9 +31,11 @@ const providerSchema = z.object({
 type ProviderFormData = z.infer<typeof providerSchema>;
 
 export default function ProviderSettings() {
+  const { providerId } = useAuth();
   const { toast } = useToast();
   const { data: provider, isLoading } = useQuery<Provider>({
-    queryKey: ["/api/providers/1"],
+    queryKey: [`/api/providers/${providerId}`],
+    enabled: !!providerId,
   });
 
   const form = useForm<ProviderFormData>({
@@ -77,7 +80,7 @@ export default function ProviderSettings() {
 
   const updateProviderMutation = useMutation({
     mutationFn: async (data: ProviderFormData) => {
-      return apiRequest("PATCH", "/api/providers/1", data);
+      return apiRequest("PATCH", `/api/providers/${providerId}`, data);
     },
     onSuccess: () => {
       toast({
@@ -137,7 +140,7 @@ export default function ProviderSettings() {
                         <FormItem>
                           <FormLabel>Full Name</FormLabel>
                           <FormControl>
-                            <Input placeholder="Sarah Johnson" {...field} />
+                            <Input placeholder="Your full name" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

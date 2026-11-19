@@ -1,6 +1,9 @@
 import { sql } from 'drizzle-orm';
 import {
   index,
+  uniqueIndex,
+  unique,
+  foreignKey,
   jsonb,
   pgTable,
   text,
@@ -42,21 +45,21 @@ export const providers = pgTable("providers", {
     linkedin?: string;
     facebook?: string;
   }>().default({}),
-});
+}, table => [uniqueIndex("providers_owner_unique").on(table.ownerUserId)]);
 
 export const services = pgTable("services", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull(),
+  providerId: integer("provider_id").notNull().references(() => providers.id),
   name: text("name").notNull(),
   description: text("description"),
   duration: integer("duration").notNull(), // in minutes
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   isActive: boolean("is_active").default(true),
-});
+}, table => [unique("services_id_provider_unique").on(table.id, table.providerId)]);
 
 export const timeSlots = pgTable("time_slots", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull(),
+  providerId: integer("provider_id").notNull().references(() => providers.id),
   dayOfWeek: integer("day_of_week").notNull(), // 0-6 (Sunday-Saturday)
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
@@ -65,12 +68,15 @@ export const timeSlots = pgTable("time_slots", {
 
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull(),
+  clientUserId: varchar("client_user_id").references(() => users.id),
+  providerId: integer("provider_id").notNull().references(() => providers.id),
   serviceId: integer("service_id").notNull(),
   clientName: text("client_name").notNull(),
   clientEmail: text("client_email").notNull(),
   clientPhone: text("client_phone").notNull(),
   appointmentDate: text("appointment_date").notNull(), // YYYY-MM-DD format
+  startsAt: timestamp("starts_at").notNull().defaultNow(),
+  endsAt: timestamp("ends_at").notNull().defaultNow(),
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
   status: text("status").notNull().default("confirmed"), // confirmed, pending, cancelled, completed
@@ -79,7 +85,11 @@ export const appointments = pgTable("appointments", {
   paymentAmount: decimal("payment_amount", { precision: 10, scale: 2 }),
   stripePaymentId: text("stripe_payment_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, table => [
+  foreignKey({ columns: [table.serviceId, table.providerId], foreignColumns: [services.id, services.providerId], name: "appointments_service_provider_fk" }),
+  index("appointments_provider_date_idx").on(table.providerId, table.appointmentDate),
+  index("appointments_client_idx").on(table.clientUserId),
+]);
 
 export const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
@@ -105,7 +115,7 @@ export const analytics = pgTable("analytics", {
 
 export const memos = pgTable("memos", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull(),
+  providerId: integer("provider_id").notNull().references(() => providers.id),
   title: text("title").notNull(),
   content: text("content").notNull(),
   category: text("category").default("general"), // general, appointment, client, personal
@@ -116,7 +126,7 @@ export const memos = pgTable("memos", {
 
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull(),
+  providerId: integer("provider_id").notNull().references(() => providers.id),
   title: text("title").notNull(),
   description: text("description"),
   status: text("status").notNull().default("pending"), // pending, in_progress, completed, cancelled
@@ -152,6 +162,18 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Credentials never form part of the public User type or user API response.
+export const authCredentials = pgTable("auth_credentials", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  passwordHash: text("password_hash").notNull(),
+});
+
+export const authAttempts = pgTable("auth_attempts", {
+  key: varchar("key").primaryKey(),
+  count: integer("count").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
 // Insert schemas
 export const insertProviderSchema = createInsertSchema(providers).omit({
   id: true,
@@ -167,7 +189,7 @@ export const insertProviderSchema = createInsertSchema(providers).omit({
   workingHours: z.object({
     start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
     end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-    days: z.array(z.number().int().min(0).max(6)),
+    days: z.array(z.number().int().min(0).max(6)).min(1).max(7),
   }).refine(hours => hours.start < hours.end, "Working hours must end after they start").nullable().optional(),
   socialLinks: z.object({
     website: z.string().url().or(z.literal("")).optional(),
@@ -193,6 +215,9 @@ export const insertTimeSlotSchema = createInsertSchema(timeSlots).omit({
 
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({
   id: true,
+  clientUserId: true,
+  startsAt: true,
+  endsAt: true,
   createdAt: true,
 }).extend({
   providerId: z.number().int().positive(),
@@ -233,7 +258,7 @@ export type TimeSlot = typeof timeSlots.$inferSelect;
 export type InsertTimeSlot = z.infer<typeof insertTimeSlotSchema>;
 
 export type Appointment = typeof appointments.$inferSelect;
-export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema> & { clientUserId?: string | null };
 
 export type Review = typeof reviews.$inferSelect;
 export const insertReviewSchema = createInsertSchema(reviews).omit({

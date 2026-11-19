@@ -1,6 +1,10 @@
 import { Route, Switch } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
+import { AccountGate } from "@/components/account-gate";
+import Login from "@/pages/login";
+import Onboarding from "@/pages/onboarding";
+import { Toaster } from "@/components/ui/toaster";
 import { useAuth } from "@/hooks/useAuth";
 
 import Home from "@/pages/home";
@@ -25,7 +29,7 @@ import Calendar from "@/pages/calendar";
 import NotFound from "@/pages/not-found";
 
 function AppRoutes() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, error } = useAuth();
 
   if (isLoading) {
     return (
@@ -38,11 +42,15 @@ function AppRoutes() {
     );
   }
 
+  if (error) return <div role="alert" className="p-8 text-center">Unable to check your account. <button onClick={() => window.location.reload()} className="text-primary underline">Retry</button></div>;
+
   return (
     <div className="page-transition min-h-screen">
       <Switch>
         {/* Public routes */}
-        <Route path="/" component={user ? ProviderDashboard : Home} />
+        <Route path="/">{user ? <AccountGate provider><ProviderDashboard /></AccountGate> : <Home />}</Route>
+        <Route path="/login" component={Login} />
+        <Route path="/onboarding"><AccountGate><Onboarding /></AccountGate></Route>
         <Route path="/find" component={FindProviders} />
         <Route path="/book/:providerId" component={Booking} />
         <Route path="/reviews/:providerId" component={Reviews} />
@@ -55,31 +63,31 @@ function AppRoutes() {
         
         {/* Protected routes - redirect to home if not authenticated */}
         <Route path="/dashboard">
-          {user ? <ProviderDashboard /> : <Home />}
+          <AccountGate provider><ProviderDashboard /></AccountGate>
         </Route>
         <Route path="/new-appointment">
-          {user ? <NewAppointment /> : <Home />}
+          <AccountGate provider><NewAppointment /></AccountGate>
         </Route>
         <Route path="/memos">
-          {user ? <Memos /> : <Home />}
+          <AccountGate provider><Memos /></AccountGate>
         </Route>
         <Route path="/tasks">
-          {user ? <Tasks /> : <Home />}
+          <AccountGate provider><Tasks /></AccountGate>
         </Route>
         <Route path="/my-bookings">
-          {user ? <MyBookings /> : <Home />}
+          <AccountGate><MyBookings /></AccountGate>
         </Route>
         <Route path="/settings">
-          {user ? <ProviderSettings /> : <Home />}
+          <AccountGate provider><ProviderSettings /></AccountGate>
         </Route>
         <Route path="/notifications">
-          {user ? <Notifications /> : <Home />}
+          <AccountGate><Notifications /></AccountGate>
         </Route>
         <Route path="/messages">
-          {user ? <Messages /> : <Home />}
+          <AccountGate><Messages /></AccountGate>
         </Route>
         <Route path="/calendar">
-          {user ? <Calendar /> : <Home />}
+          <AccountGate><Calendar /></AccountGate>
         </Route>
         
         {/* 404 */}
@@ -93,6 +101,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppRoutes />
+      <Toaster />
     </QueryClientProvider>
   );
 }

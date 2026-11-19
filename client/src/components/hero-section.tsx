@@ -5,10 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import type { Provider } from "@shared/schema";
 
 export default function HeroSection() {
-  const { user } = useAuth();
+  const { user, providerId } = useAuth();
   const { data: provider } = useQuery<Provider>({
-    queryKey: ["/api/providers/1"],
-    enabled: !!user,
+    queryKey: [`/api/providers/${providerId}`],
+    enabled: !!providerId,
   });
 
   const displayName: string = provider ? `${provider.title} ${provider.name}`.trim() : (user as any)?.firstName || "Professional";
@@ -43,7 +43,7 @@ export default function HeroSection() {
                       Book Now
                     </button>
                   </Link>
-                  <Link href="/api/login" className="w-full sm:w-auto">
+                  <Link href="/login" className="w-full sm:w-auto">
                     <button className="w-full border-2 border-slate-200 text-slate-700 px-8 py-3 rounded-lg hover:bg-slate-50 transition-colors font-semibold text-lg flex items-center justify-center">
                       <i className="fas fa-user-md mr-2"></i>
                       Professional Sign Up

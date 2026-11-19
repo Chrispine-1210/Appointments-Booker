@@ -9,7 +9,7 @@ import { OnboardingTour } from "@/components/onboarding-tour";
 import type { Appointment, Provider, Analytics } from "@shared/schema";
 
 export default function ProviderDashboard() {
-  const { user } = useAuth();
+  const { user, providerId } = useAuth();
   const [runTour, setRunTour] = React.useState(false);
 
   React.useEffect(() => {
@@ -25,16 +25,19 @@ export default function ProviderDashboard() {
   };
 
   const { data: provider, isLoading: isLoadingProvider } = useQuery<Provider>({
-    queryKey: ["/api/providers/1"],
+    queryKey: [`/api/providers/${providerId}`],
+    enabled: !!providerId,
   });
 
   const { data: analytics, isLoading: isLoadingAnalytics } = useQuery<Analytics>({
-    queryKey: ["/api/analytics/1"],
+    queryKey: [`/api/analytics/${providerId}`],
+    enabled: !!providerId,
   });
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const { data: appointments = [], isLoading: isLoadingAppointments } = useQuery<Appointment[]>({
-    queryKey: ["/api/providers/1/appointments", { date: today }],
+    queryKey: [`/api/providers/${providerId}/appointments`, { date: today }],
+    enabled: !!providerId,
   });
 
   if (isLoadingProvider || isLoadingAnalytics || isLoadingAppointments) {
@@ -107,7 +110,7 @@ export default function ProviderDashboard() {
               </div>
               
               <div className="analytics-section relative z-10">
-                <AnalyticsDashboard providerId={1} />
+                <AnalyticsDashboard providerId={providerId!} />
               </div>
             </div>
 

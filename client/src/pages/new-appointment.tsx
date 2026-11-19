@@ -1,3 +1,4 @@
+import { useAuth } from "@/hooks/useAuth";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import type { Service } from "@shared/schema";
+import type { Provider, Service } from "@shared/schema";
 
 const appointmentSchema = z.object({
   serviceId: z.number().min(1, "Please select a service"),
@@ -27,21 +28,25 @@ const appointmentSchema = z.object({
 type AppointmentFormData = z.infer<typeof appointmentSchema>;
 
 export default function NewAppointment() {
+  const { providerId } = useAuth();
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<string>("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const { data: provider } = useQuery<Provider>({ queryKey: ["/api/providers/me"], enabled: !!providerId });
+
   // Get services for this provider
   const { data: services = [] } = useQuery<Service[]>({
-    queryKey: [`/api/providers/1/services`],
+    queryKey: [`/api/providers/${providerId}/services`],
+    enabled: !!providerId,
   });
 
   // Get available time slots for selected date
   const { data: availableSlots = [] } = useQuery<string[]>({
-    queryKey: [`/api/providers/1/available-slots`, { date: selectedDate }],
-    enabled: !!selectedDate,
+    queryKey: [`/api/providers/${providerId}/available-slots`, { date: selectedDate, serviceId: selectedService?.id }],
+    enabled: !!providerId && !!selectedDate && !!selectedService,
   });
 
   const form = useForm<AppointmentFormData>({
@@ -62,7 +67,7 @@ export default function NewAppointment() {
       if (!selectedService) throw new Error("No service selected");
       
       const appointmentData = {
-        providerId: 1,
+        providerId: providerId!,
         serviceId: data.serviceId,
         appointmentDate: data.appointmentDate,
         startTime: data.startTime,
@@ -85,8 +90,8 @@ export default function NewAppointment() {
       setSelectedService(null);
       setSelectedDate("");
       setSelectedTime("");
-      queryClient.invalidateQueries({ queryKey: [`/api/providers/1/available-slots`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/providers/1/appointments`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/available-slots`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/providers/${providerId}/appointments`] });
     },
     onError: (error: any) => {
       toast({
@@ -136,7 +141,7 @@ export default function NewAppointment() {
                 <i className="fas fa-calendar-plus text-2xl"></i>
               </div>
               <div>
-                <h2 className="text-xl font-bold">Dr. Sarah Johnson</h2>
+                <h2 className="text-xl font-bold">{provider?.title} {provider?.name}</h2>
                 <p className="text-blue-100">Family Medicine</p>
               </div>
             </div>
@@ -173,7 +178,7 @@ export default function NewAppointment() {
                                   <div className="font-medium text-slate-800">{service.name}</div>
                                   <div className="text-sm text-slate-600">{service.duration} min</div>
                                 </div>
-                                <div className="text-primary font-semibold">${service.price}</div>
+                                <div className="text-primary font-semibold">MWK {service.price}</div>
                               </div>
                             </div>
                           ))}

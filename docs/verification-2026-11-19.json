@@ -1,0 +1,47 @@
+{
+  "databaseVersion": "18.6",
+  "before": {
+    "version": "18.6",
+    "users": 4,
+    "providers": 2,
+    "appointments": 8,
+    "sessions": 6,
+    "memos": 1
+  },
+  "after": {
+    "version": "18.6",
+    "users": 4,
+    "providers": 2,
+    "appointments": 8,
+    "sessions": 6,
+    "memos": 1
+  },
+  "result": "PASS",
+  "postgresDeadlocksHandled": 1,
+  "dateMalawi": "2026-11-19",
+  "regressions": {
+    "passed": 21,
+    "failed": 0
+  },
+  "postgresIntegration": {
+    "passed": 13,
+    "failed": 0
+  },
+  "productionAudit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "fullAudit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 4,
+    "high": 0,
+    "critical": 0,
+    "total": 4
+  },
+  "evidenceScope": "Isolated local PostgreSQL; no live cloud deployment or browser certification."
+}

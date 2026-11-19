@@ -1,8 +1,15 @@
+import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
+import type { Appointment, Provider } from "@shared/schema";
 import { useState } from "react";
 import Navigation from "@/components/navigation";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth } from "date-fns";
 
 export default function Calendar() {
+  const { providerId } = useAuth();
+  const { data: stored = [], error } = useQuery<Appointment[]>({ queryKey: [providerId ? `/api/providers/${providerId}/appointments` : "/api/appointments/my"] });
+  const { data: providers = [] } = useQuery<Provider[]>({ queryKey: ["/api/providers"] });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
@@ -10,11 +17,12 @@ export default function Calendar() {
   const monthEnd = endOfMonth(currentDate);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  const appointments = [
-    { date: "2025-12-05", title: "Dentist Appointment", time: "2:00 PM", provider: "Dr. Smith" },
-    { date: "2025-12-10", title: "Hair Cut", time: "10:30 AM", provider: "Style Studio" },
-    { date: "2025-12-15", title: "Doctor Check-up", time: "3:30 PM", provider: "Dr. Johnson" },
-  ];
+  const appointments = stored.filter(appointment => appointment.status !== "cancelled").map(appointment => ({
+    id: appointment.id, date: appointment.appointmentDate,
+    title: providerId ? appointment.clientName : `Appointment #${appointment.id}`,
+    time: `${appointment.startTime} – ${appointment.endTime}`,
+    provider: providers.find(provider => provider.id === appointment.providerId)?.name ?? `Provider #${appointment.providerId}`,
+  }));
 
   const getAppointmentsForDate = (date: Date) => {
     const dateStr = format(date, "yyyy-MM-dd");
@@ -35,6 +43,7 @@ export default function Calendar() {
       
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <h1 className="text-4xl font-bold text-slate-800 mb-8">My Calendar</h1>
+        {error && <p role="alert" className="mb-4 text-red-700">Unable to load appointments. Please retry.</p>}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Calendar */}
@@ -61,6 +70,7 @@ export default function Calendar() {
 
             {/* Days Grid */}
             <div className="grid grid-cols-7 gap-2">
+              {Array.from({ length: monthStart.getDay() }, (_, index) => <span key={`empty-${index}`} />)}
               {daysInMonth.map((day, idx) => {
                 const isCurrentMonth = isSameMonth(day, currentDate);
                 const dayAppts = getAppointmentsForDate(day);
@@ -107,18 +117,18 @@ export default function Calendar() {
                     <p className="text-sm text-slate-600">
                       <i className="fas fa-user-md mr-2"></i>{appt.provider}
                     </p>
-                    <button className="mt-3 w-full px-3 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition-colors text-sm font-medium">
+                    <Link href={`/confirmation/${appt.id}`} className="mt-3 block w-full px-3 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition-colors text-sm font-medium">
                       View Details
-                    </button>
+                    </Link>
                   </div>
                 ))
               )}
             </div>
 
             {/* New Appointment Button */}
-            <button className="w-full mt-6 bg-gradient-to-r from-primary to-blue-600 text-white py-3 rounded-lg hover:shadow-lg transition-shadow font-semibold">
+            <Link href={providerId ? "/new-appointment" : "/find"} className="block text-center w-full mt-6 bg-gradient-to-r from-primary to-blue-600 text-white py-3 rounded-lg hover:shadow-lg transition-shadow font-semibold">
               <i className="fas fa-plus mr-2"></i>New Appointment
-            </button>
+            </Link>
           </div>
         </div>
       </div>

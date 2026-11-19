@@ -1,45 +1,44 @@
-# Engineering baseline — 19 November 2026 (Malawi)
+# Implementation and verification — 19 November 2026 (Malawi)
 
-Baseline inspected: `fe4737a0220df728fe6327cae20fcda258ef23ed` on `main`.
+## Delivered in PR #5
 
-## Findings and changes in this branch
-
-| Area | Observed baseline | Change |
+| Requirement | Implementation | Evidence |
 | --- | --- | --- |
-| Installation | `npm ci` failed on unused Tailwind v4/Vite integration and incompatible Node types | Remove unused integration; align Node types and runtime requirements |
-| Identity | `/api/auth/user` always returned `demo-user`; middleware skipped authentication outside Replit | Return stored authenticated principal; reject absent/expired sessions everywhere |
-| Provider isolation | Private lists and writes did not check provider ownership | Bind new profiles to session subject; validate stored owner for private operations |
-| Personal information | Response bodies were logged | Log method, path, status, duration only; redact unexpected errors |
-| Booking integrity | Check and insert separated by asynchronous calls; incomplete availability filtering | Check and insert synchronously in development memory; account for full service duration, cancelled records, opening hours, rescheduling |
-| Financial integrity | Public appointment payload accepted payment status and amount | Reject financial fields; derive service price and pending payment state on server |
-| Query parameters | Dates in query keys were never sent to API | Serialize query parameters; include selected service in public availability request |
-| API failures | Error handler rethrew errors; unknown APIs fell through to HTML | Return redacted JSON errors and API 404s without terminating the process |
-| Persistence | Class named `DatabaseStorage` actually held Maps; unused DB import required DATABASE_URL | Rename to MemoryStorage, remove unused connection, fail production startup explicitly |
-| Verification | No application quality workflow or tests | Add HTTP regressions and Node 22 typecheck/test/build workflow |
-| Documentation | Claimed 20+ fully functional pages and production readiness | Document actual capabilities and limitations |
+| Durable PostgreSQL | Drizzle migrations; PostgreSQL CRUD for all application records; PostgreSQL sessions; startup schema checks | Real PostgreSQL 18.6 integration tests; application restart; database-service stop/start preserves record counts |
+| Real login | Email/password registration and login; salted scrypt (N=32768, r=8, p=3); bounded hashing concurrency; generic credential errors; atomic shared account/IP throttling; session rotation and logout invalidation | Real HTTP login, invalid credentials, forged-header rejection, multi-worker logout replay, HTTPS secure-cookie tests |
+| Provider onboarding | One transaction creates the owned profile and first service; unique account ownership; opening-hour and service validation | Successful onboarding; duplicate conflict; rollback when service insertion fails |
+| Dynamic provider context | Authenticated user response supplies providerId; protected routes gate onboarding; all provider-specific screens and writes use the account's ID | Two distinct provider accounts isolated across independent API processes; source scan finds no hardcoded provider API IDs or sample practitioner names in client code |
+| Four production dependency findings | Upgrade Drizzle ORM to 0.45.4 and Zod to 4.6.7 with compatible Drizzle-Zod and form resolver; remove unused zod-validation-error; update Express qs dependency | `npm audit --omit=dev`: zero findings |
 
-## Evidence boundary
+## Booking integrity
 
-The HTTP test adapter provides identities only inside the test fixture; no application endpoint accepts a subject header. The tests prove local route behavior and single-process conflict exclusion. They do not prove identity-provider callbacks, refresh, durable sessions, multi-instance concurrency, delivery of messages, payments, backup restoration or production readiness.
+The PostgreSQL exclusion constraint rejects overlapping half-open intervals for the same provider. Adjacent bookings are permitted; cancelled bookings release their intervals. A trigger derives timestamp intervals, validates the provider/service relationship, duration and opening hours, and sets new bookings to the service's price with pending payment status. A composite foreign key protects service/provider consistency. Ownership cannot be reassigned through updates.
 
-No live database was changed. `migrations/0001_provider_ownership.sql` is additive preparation and has not been executed. It assumes a reviewed baseline schema. Existing providers must be assigned through a trusted, audited process; do not claim providers by matching an email address.
+API tests submit concurrent overlapping requests through two separate application processes in four batches of six competing requests. Every batch requires exactly one HTTP 201 and five HTTP 409 responses. Confirmed deadlock/serialization rollbacks receive at most two retries; an exhausted retry budget returns HTTP 503. Network errors with an unknown commit outcome are not automatically retried. A separate test forces a real PostgreSQL deadlock and verifies rollback before retry. Rescheduling conflicts preserve the original booking. These checks use real PostgreSQL, not an in-memory database emulator.
 
-Generated bundles are removed from version control to prevent stale code from being shipped. The source build still reports a large JavaScript bundle warning. Route splitting is a later performance task.
+Provider ownership comes from the signed-in account ID. Credentials are stored separately from public user records. Client booking history is scoped to the authenticated creator; guest confirmation access is scoped to the guest's persisted session. Request headers cannot manufacture an identity. Cross-origin writes are rejected, and authentication responses and private reads use no-store caching.
 
-## Next implementation sequence
+## Verification results
 
-1. **Durable booking engine:** implement PostgreSQL storage; establish baseline migrations and foreign keys; enforce appointment overlap with a PostgreSQL exclusion constraint or equivalent transaction-safe database control; verify parallel requests across separate processes; prove persistence after restart and a restore into an empty target.
-2. **Real provider and client journeys:** choose the deployment identity provider, validate OIDC login/logout/refresh against the intended host, add provider onboarding, replace hardcoded provider `1` across protected pages, and add client-to-appointment ownership for personal booking history, confirmation lookup, cancellations and verified reviews.
-3. **Operational delivery:** implement or remove placeholder messaging/calendar/notification flows; configure transactional email and reminders; add abuse controls and audit trails; test browser journeys, deploy an exact-commit preview, then verify production configuration and recovery.
+- Clean installation without a peer-dependency override.
+- TypeScript: PASS.
+- Regression suite: 21/21 PASS.
+- PostgreSQL integration suite: 13/13 PASS.
+- Production build: PASS; large client bundle warning remains.
+- Drizzle migration metadata check: PASS.
+- Migration replay: PASS.
+- Application process restart: stored memo, account and session readback PASS.
+- PostgreSQL service stop/start: users, providers, appointments, sessions and memos retained; exact before/after counts are recorded in `verification-2026-11-19.json`.
+- Production dependency audit: 0 critical, 0 high, 0 moderate, 0 low.
+- Full dependency audit: 4 moderate findings in development-only tooling; 0 high/critical.
+- Whitespace check: PASS.
 
-Only after these foundations should commercial packaging claim a dependable scheduling service. Bookings and quoted service prices do not establish collected revenue; the payment workflow is not implemented.
+The PostgreSQL suite uses an isolated local database. It does not certify a live Neon endpoint or a deployed hosting environment. No external database migration, production deployment or merge was performed. Browser interaction testing and backup/restore testing remain unverified.
 
-## Verification on this branch
+## Activation requirements and limitations
 
-- Clean `npm ci --ignore-scripts`: PASS. No peer-dependency override used.
-- `npm run verify`: PASS — TypeScript, 19/19 HTTP/query regressions, source production build.
-- Development entrypoint smoke: `/`, `/find`, `/api/providers` HTTP 200; unauthenticated `/api/auth/user` HTTP 401; unconfigured `/api/login` HTTP 503; unknown API HTTP 404.
-- Built production entrypoint: refuses MemoryStorage as intended. Dev-only Vite integrations are eliminated from the production bundle.
-- `git diff --check`: PASS.
-- `npm audit --omit=dev`: 4 remaining package findings — 3 high (drizzle-orm, zod, zod-validation-error) and 1 moderate (qs), down from 19 (including 1 critical) before compatible updates. Full dependency audit additionally reports development-tool findings. This is not a clean security audit. Plan and verify the required core-library migrations and remaining transitive updates before deployment; no forced major-version upgrade was applied.
-- Live OIDC, PostgreSQL, browser journeys, GitHub executable CI and deployed runtime: not certified by this local evidence.
+Supply the intended application's `DATABASE_URL`, direct migration URL where needed, stable `SESSION_SECRET`, canonical HTTPS `APP_ORIGIN`, and correct proxy hop count. Apply the reviewed migrations before starting the application. There is no matching configured Neon project or database URL in the inspected environment; unrelated project credentials were not reused.
+
+Provider registration is self-service and does not establish verified professional credentials or verified ownership of an email address. Email verification, account recovery, transactional email, automatic reminders, payment settlement, verified reviews and operational audit trails require further implementation. The UI no longer fabricates conversations, notification events or booking trend figures. Booking values are not presented as settled collections.
+
+The previous foundation's GitHub Actions run failed with zero executable steps. The updated branch's provider checks must be assessed at its new commit; locally passing tests do not establish GitHub-hosted execution.

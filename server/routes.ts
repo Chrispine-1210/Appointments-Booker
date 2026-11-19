@@ -1,9 +1,10 @@
 import type { Express, RequestHandler } from "express";
 import { createServer, type Server } from "node:http";
-import { storage as defaultStorage, type IStorage } from "./storage";
-import { setupAuth, isAuthenticated, authenticatedUserId } from "./replitAuth";
+import type { IStorage } from "./storage";
+import { createStorage } from "./db";
+import { setupAuth, isAuthenticated, authenticatedUserId } from "./auth";
 import { registerAnalyticsRoutes } from "./routes-analytics";
-import { providerAccess, recordAccess, positiveId, sameOrigin } from "./access";
+import { providerAccess, recordAccess, positiveId } from "./access";
 import {
   insertProviderSchema, insertServiceSchema, insertAppointmentSchema,
   insertMemoSchema, insertTaskSchema,
@@ -23,9 +24,8 @@ export async function registerRoutes(
   app: Express,
   options: { storage?: IStorage; setupAuth?: typeof setupAuth } = {},
 ): Promise<Server> {
-  const storage = options.storage ?? defaultStorage;
-  await (options.setupAuth ?? setupAuth)(app);
-  app.use("/api", sameOrigin);
+  const storage = options.storage ?? await createStorage();
+  await (options.setupAuth ?? setupAuth)(app, storage);
   registerAnalyticsRoutes(app, storage);
 
   const route = (handler: RequestHandler): RequestHandler => (req, res, next) => {
@@ -38,9 +38,21 @@ export async function registerRoutes(
     res.set("Cache-Control", "no-store");
     const user = await storage.getUser(authenticatedUserId(req)!);
     if (!user) return res.status(401).json({ message: "Unauthorized" });
-    res.json(user);
+    const provider = await storage.getProviderByOwnerId(user.id);
+    res.json({ ...user, providerId: provider?.id ?? null });
   }));
-  app.get("/api/health", (_req, res) => res.json({ status: "healthy", storage: "memory", timestamp: new Date().toISOString() }));
+  app.get("/api/health", (_req, res) => res.json({ status: "healthy", storage: storage.kind, timestamp: new Date().toISOString() }));
+  app.get("/api/providers/me", isAuthenticated, route(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const provider = await storage.getProviderByOwnerId(authenticatedUserId(req)!);
+    if (!provider) return res.status(404).json({ message: "Create your provider profile first" });
+    res.json(publicProvider(provider));
+  }));
+  app.post("/api/providers/onboard", isAuthenticated, route(async (req, res) => {
+    const input = z.object({ profile: insertProviderSchema.strict(), service: insertServiceSchema.omit({ providerId: true }).strict() }).strict().parse(req.body);
+    const result = await storage.onboardProvider(input.profile, input.service, authenticatedUserId(req)!);
+    res.status(201).json({ provider: publicProvider(result.provider), service: result.service });
+  }));
   app.get("/api/providers", route(async (_req, res) => res.json((await storage.getProviders()).map(publicProvider))));
   app.get("/api/providers/:id", route(async (req, res) => {
     const id = positiveId(req.params.id);
@@ -102,8 +114,25 @@ export async function registerRoutes(
     if (!service?.isActive || service.providerId !== data.providerId || timeMinutes(data.endTime) - timeMinutes(data.startTime) !== service.duration) {
       return res.status(400).json({ message: "Service and duration must match the selected provider" });
     }
-    const appointment = await storage.createAppointment({ ...data, status: "confirmed", paymentStatus: "pending", paymentAmount: service.price, stripePaymentId: null });
+    const appointment = await storage.createAppointment({ ...data, clientUserId: authenticatedUserId(req) ?? null, status: "confirmed", paymentStatus: "pending", paymentAmount: service.price, stripePaymentId: null });
+    if (req.session) {
+      req.session.bookingIds = [...(req.session.bookingIds ?? []), appointment.id].slice(-50);
+      await new Promise<void>((resolve, reject) => req.session.save(error => error ? reject(error) : resolve()));
+    }
     res.status(201).json(appointment);
+  }));
+  app.get("/api/appointments/my", isAuthenticated, route(async (req, res) => {
+    res.set("Cache-Control", "no-store").json(await storage.getAppointmentsByClient(authenticatedUserId(req)!));
+  }));
+  app.get("/api/appointments/:id", route(async (req, res) => {
+    const id = positiveId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Invalid appointment ID" });
+    const appointment = await storage.getAppointment(id);
+    if (!appointment) return res.status(404).json({ message: "Appointment not found" });
+    const subject = authenticatedUserId(req);
+    const provider = subject ? await storage.getProvider(appointment.providerId) : undefined;
+    if (!req.session?.bookingIds?.includes(id) && (!subject || (appointment.clientUserId !== subject && provider?.ownerUserId !== subject))) return res.status(403).json({ message: "Appointment access denied" });
+    res.set("Cache-Control", "no-store").json(appointment);
   }));
   app.patch("/api/appointments/:id", isAuthenticated, recordAccess(storage, "Appointment"), route(async (req, res) => {
     const data = appointmentUpdateSchema.parse(req.body);

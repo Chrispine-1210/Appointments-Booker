@@ -11,6 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Provider, Service } from "@shared/schema";
+import { useLocation } from "wouter";
 
 const bookingSchema = z.object({
   serviceId: z.number().min(1, "Please select a service"),
@@ -29,6 +30,7 @@ interface BookingFormProps {
 }
 
 export default function BookingForm({ provider }: BookingFormProps) {
+  const [, navigate] = useLocation();
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedTime, setSelectedTime] = useState<string>("");
@@ -76,9 +78,9 @@ export default function BookingForm({ provider }: BookingFormProps) {
         status: "confirmed" as const,
       };
 
-      return apiRequest("POST", "/api/appointments", appointmentData);
+      return (await apiRequest("POST", "/api/appointments", appointmentData)).json();
     },
-    onSuccess: () => {
+    onSuccess: (appointment) => {
       toast({
         title: "Appointment Booked!",
         description: "Your booking was saved. Email delivery is not configured yet.",
@@ -88,6 +90,7 @@ export default function BookingForm({ provider }: BookingFormProps) {
       setSelectedDate("");
       setSelectedTime("");
       queryClient.invalidateQueries({ queryKey: [`/api/providers/${provider.id}/available-slots`] });
+      navigate(`/confirmation/${appointment.id}`);
     },
     onError: (error: any) => {
       toast({
@@ -139,6 +142,8 @@ export default function BookingForm({ provider }: BookingFormProps) {
                       onClick={() => {
                         field.onChange(service.id);
                         setSelectedService(service);
+                        form.setValue("startTime", "");
+                        setSelectedTime("");
                       }}
                     >
                       <div className="flex items-center justify-between">
@@ -146,7 +151,7 @@ export default function BookingForm({ provider }: BookingFormProps) {
                           <div className="font-medium text-slate-800">{service.name}</div>
                           <div className="text-sm text-slate-600">{service.duration} min</div>
                         </div>
-                        <div className="text-primary font-semibold">${service.price}</div>
+                        <div className="text-primary font-semibold">MWK {service.price}</div>
                       </div>
                     </div>
                   ))}
@@ -336,7 +341,7 @@ export default function BookingForm({ provider }: BookingFormProps) {
               <div className="border-t border-slate-200 pt-2 mt-2">
                 <div className="flex justify-between font-semibold">
                   <span>Total:</span>
-                  <span className="text-primary">${selectedService.price}</span>
+                  <span className="text-primary">MWK {selectedService.price}</span>
                 </div>
               </div>
             </div>

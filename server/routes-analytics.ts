@@ -1,6 +1,6 @@
 import type { Express, RequestHandler } from "express";
 import type { IStorage } from "./storage";
-import { isAuthenticated } from "./replitAuth";
+import { isAuthenticated } from "./auth";
 import { providerAccess, positiveId } from "./access";
 
 export function registerAnalyticsRoutes(app: Express, storage: IStorage) {
