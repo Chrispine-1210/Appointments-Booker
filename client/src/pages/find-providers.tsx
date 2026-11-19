@@ -19,7 +19,7 @@ export default function FindProviders() {
     const matchesSearch = provider.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          provider.specialty.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSpecialty = !selectedSpecialty || provider.specialty === selectedSpecialty;
-    const matchesRating = parseFloat(provider.rating) >= minRating;
+    const matchesRating = parseFloat(provider.rating ?? "0") >= minRating;
     return matchesSearch && matchesSpecialty && matchesRating;
   });
 
@@ -105,7 +105,7 @@ export default function FindProviders() {
                     <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center font-bold text-xl">
                       {provider.name.split(' ').map(n => n[0]).join('')}
                     </div>
-                    {parseFloat(provider.rating) > 0 && (
+                    {parseFloat(provider.rating ?? "0") > 0 && (
                       <div className="bg-yellow-400 text-slate-900 px-3 py-1 rounded-full text-sm font-semibold">
                         ⭐ {provider.rating}
                       </div>

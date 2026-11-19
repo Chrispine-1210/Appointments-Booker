@@ -21,8 +21,7 @@ import {
   type User,
   type UpsertUser
 } from "@shared/schema";
-import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { BookingError, validDate, timeMinutes } from "./scheduling";
 
 export interface IStorage {
   // User operations
@@ -37,7 +36,7 @@ export interface IStorage {
   updateProviderRating(providerId: number, rating: string, reviewCount: number): Promise<void>;
 
   // Provider methods
-  createProvider(provider: InsertProvider): Promise<Provider>;
+  createProvider(provider: InsertProvider, ownerUserId: string): Promise<Provider>;
   getProvider(id: number): Promise<Provider | undefined>;
   getProviders(): Promise<Provider[]>;
   updateProvider(id: number, provider: Partial<InsertProvider>): Promise<Provider | undefined>;
@@ -78,11 +77,12 @@ export interface IStorage {
   deleteTask(id: number): Promise<boolean>;
 
   // Utility methods
-  getAvailableSlots(providerId: number, date: string): Promise<string[]>;
+  getAvailableSlots(providerId: number, date: string, duration?: number): Promise<string[]>;
   isSlotAvailable(providerId: number, date: string, startTime: string, endTime: string): Promise<boolean>;
 }
 
-export class DatabaseStorage implements IStorage {
+// Development storage only. All records disappear when the process restarts.
+export class MemoryStorage implements IStorage {
   // User operations
   // (IMPORTANT) these user operations are mandatory for Replit Auth.
   // Using in-memory storage for now to avoid database authentication issues
@@ -141,6 +141,7 @@ export class DatabaseStorage implements IStorage {
     // Create sample provider
     const provider: Provider = {
       id: 1,
+      ownerUserId: null,
       name: "Sarah Johnson",
       title: "Dr.",
       specialty: "Family Medicine",
@@ -269,11 +270,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Provider methods
-  async createProvider(insertProvider: InsertProvider): Promise<Provider> {
+  async createProvider(insertProvider: InsertProvider, ownerUserId: string): Promise<Provider> {
     const id = this.currentId++;
     const provider: Provider = { 
       ...insertProvider, 
       id, 
+      ownerUserId,
+      title: insertProvider.title ?? "",
+      workingHours: insertProvider.workingHours ?? { start: "09:00", end: "17:00", days: [1, 2, 3, 4, 5] },
+      socialLinks: insertProvider.socialLinks ?? {},
       rating: "0.00", 
       reviewCount: 0, 
       isActive: true,
@@ -375,11 +380,16 @@ export class DatabaseStorage implements IStorage {
 
   // Appointment methods
   async createAppointment(insertAppointment: InsertAppointment): Promise<Appointment> {
+    // No await between checking the interval and inserting it: atomic in this process.
+    this.validateAppointment(insertAppointment);
     const id = this.currentId++;
     const appointment: Appointment = { 
       ...insertAppointment, 
       id, 
       status: insertAppointment.status || 'pending',
+      paymentStatus: insertAppointment.paymentStatus ?? "pending",
+      paymentAmount: insertAppointment.paymentAmount ?? null,
+      stripePaymentId: insertAppointment.stripePaymentId ?? null,
       createdAt: new Date(),
       notes: insertAppointment.notes || null
     };
@@ -408,6 +418,7 @@ export class DatabaseStorage implements IStorage {
     if (!existing) return undefined;
     
     const updated = { ...existing, ...appointment };
+    this.validateAppointment(updated, id);
     this.appointments.set(id, updated);
     return updated;
   }
@@ -417,28 +428,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Utility methods
-  async getAvailableSlots(providerId: number, date: string): Promise<string[]> {
+  async getAvailableSlots(providerId: number, date: string, duration = 30): Promise<string[]> {
     const provider = await this.getProvider(providerId);
-    if (!provider || !provider.workingHours) return [];
+    if (!provider?.isActive || !provider.workingHours || !validDate(date) || !Number.isInteger(duration) || duration < 1 || duration > 720) return [];
 
-    const dateObj = new Date(date);
-    const dayOfWeek = dateObj.getDay();
+    const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
     
     if (!provider.workingHours.days.includes(dayOfWeek)) {
       return [];
     }
 
-    const appointments = await this.getAppointmentsByDate(providerId, date);
-    const bookedTimes = appointments.map(a => a.startTime);
+    const appointments = (await this.getAppointmentsByDate(providerId, date)).filter(a => a.status !== "cancelled");
     
     const slots: string[] = [];
     let [currentHour, currentMin] = provider.workingHours.start.split(":").map(Number);
     const [endHour, endMin] = provider.workingHours.end.split(":").map(Number);
     const endTotalMinutes = endHour * 60 + endMin;
 
-    while (currentHour * 60 + currentMin < endTotalMinutes) {
+    while (currentHour * 60 + currentMin + duration <= endTotalMinutes) {
       const timeStr = `${currentHour.toString().padStart(2, '0')}:${currentMin.toString().padStart(2, '0')}`;
-      if (!bookedTimes.includes(timeStr)) {
+      const start = currentHour * 60 + currentMin;
+      if (!appointments.some(a => start < timeMinutes(a.endTime) && start + duration > timeMinutes(a.startTime))) {
         slots.push(timeStr);
       }
       
@@ -453,19 +463,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async isSlotAvailable(providerId: number, date: string, startTime: string, endTime: string): Promise<boolean> {
-    const appointments = await this.getAppointmentsByDate(providerId, date);
-    
-    for (const appointment of appointments) {
-      if (
-        (startTime >= appointment.startTime && startTime < appointment.endTime) ||
-        (endTime > appointment.startTime && endTime <= appointment.endTime) ||
-        (startTime <= appointment.startTime && endTime >= appointment.endTime)
-      ) {
-        return false;
+    try {
+      this.validateAppointment({ providerId, appointmentDate: date, startTime, endTime, status: "confirmed" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private validateAppointment(candidate: Pick<InsertAppointment, "providerId" | "appointmentDate" | "startTime" | "endTime" | "status">, excludeId?: number) {
+    const provider = this.providers.get(candidate.providerId);
+    const hours = provider?.workingHours;
+    const start = timeMinutes(candidate.startTime);
+    const end = timeMinutes(candidate.endTime);
+    if (!validDate(candidate.appointmentDate) || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      throw new BookingError("Invalid appointment date or interval");
+    }
+    if (candidate.status === "cancelled") return;
+    if (!provider?.isActive || !hours || !hours.days.includes(new Date(`${candidate.appointmentDate}T00:00:00Z`).getUTCDay()) || start < timeMinutes(hours.start) || end > timeMinutes(hours.end)) {
+      throw new BookingError("Appointment is outside provider working hours");
+    }
+    for (const appointment of this.appointments.values()) {
+      if (appointment.id === excludeId || appointment.status === "cancelled" || appointment.providerId !== candidate.providerId || appointment.appointmentDate !== candidate.appointmentDate) continue;
+      if (start < timeMinutes(appointment.endTime) && end > timeMinutes(appointment.startTime)) {
+        throw new BookingError("Time slot is not available", 409);
       }
     }
-    
-    return true;
   }
 
   // Memo methods
@@ -576,4 +599,10 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+export const storage = new MemoryStorage();
+
+export function assertStorageReady(environment = process.env.NODE_ENV) {
+  if (environment === "production") {
+    throw new Error("Production requires a durable storage implementation. MemoryStorage is development-only.");
+  }
+}

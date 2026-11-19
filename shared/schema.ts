@@ -16,6 +16,7 @@ import { z } from "zod";
 
 export const providers = pgTable("providers", {
   id: serial("id").primaryKey(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id),
   name: text("name").notNull(),
   title: text("title").default(""), // e.g. Dr., Prof., etc.
   specialty: text("specialty").notNull(),
@@ -154,14 +155,35 @@ export const users = pgTable("users", {
 // Insert schemas
 export const insertProviderSchema = createInsertSchema(providers).omit({
   id: true,
+  ownerUserId: true,
   rating: true,
   reviewCount: true,
   isActive: true,
+}).extend({
+  name: z.string().trim().min(1).max(200),
+  email: z.string().email().max(320),
+  specialty: z.string().trim().min(1).max(200),
+  phone: z.string().trim().min(1).max(40),
+  workingHours: z.object({
+    start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+    days: z.array(z.number().int().min(0).max(6)),
+  }).refine(hours => hours.start < hours.end, "Working hours must end after they start").nullable().optional(),
+  socialLinks: z.object({
+    website: z.string().url().or(z.literal("")).optional(),
+    instagram: z.string().optional(), twitter: z.string().optional(),
+    linkedin: z.string().optional(), facebook: z.string().optional(),
+  }).nullable().optional(),
 });
 
 export const insertServiceSchema = createInsertSchema(services).omit({
   id: true,
   isActive: true,
+}).extend({
+  providerId: z.number().int().positive(),
+  name: z.string().trim().min(1).max(200),
+  duration: z.number().int().min(1).max(720),
+  price: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/),
 });
 
 export const insertTimeSlotSchema = createInsertSchema(timeSlots).omit({
@@ -173,9 +195,18 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({
   id: true,
   createdAt: true,
 }).extend({
-  appointmentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format"),
-  startTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
-  endTime: z.string().regex(/^\d{2}:\d{2}$/, "Time must be in HH:MM format"),
+  providerId: z.number().int().positive(),
+  serviceId: z.number().int().positive(),
+  clientName: z.string().trim().min(1).max(200),
+  clientEmail: z.string().email().max(320),
+  clientPhone: z.string().trim().min(1).max(40),
+  notes: z.string().max(5000).nullable().optional(),
+  appointmentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").refine(value => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, "Invalid calendar date"),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM format"),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM format"),
 });
 
 export const insertMemoSchema = createInsertSchema(memos).omit({

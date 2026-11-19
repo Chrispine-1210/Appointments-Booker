@@ -42,8 +42,8 @@ export default function BookingForm({ provider }: BookingFormProps) {
 
   // Get available time slots for selected date
   const { data: availableSlots = [] } = useQuery<string[]>({
-    queryKey: [`/api/providers/${provider.id}/available-slots`, { date: selectedDate }],
-    enabled: !!selectedDate,
+    queryKey: [`/api/providers/${provider.id}/available-slots`, { date: selectedDate, serviceId: selectedService?.id }],
+    enabled: !!selectedDate && !!selectedService,
   });
 
   const form = useForm<BookingFormData>({
@@ -81,7 +81,7 @@ export default function BookingForm({ provider }: BookingFormProps) {
     onSuccess: () => {
       toast({
         title: "Appointment Booked!",
-        description: "You will receive a confirmation email shortly.",
+        description: "Your booking was saved. Email delivery is not configured yet.",
       });
       form.reset();
       setSelectedService(null);

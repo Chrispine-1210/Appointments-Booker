@@ -11,7 +11,7 @@ export default function HeroSection() {
     enabled: !!user,
   });
 
-  const displayName = provider ? `${provider.title} ${provider.name}`.trim() : (user as any)?.firstName || "Professional";
+  const displayName: string = provider ? `${provider.title} ${provider.name}`.trim() : (user as any)?.firstName || "Professional";
 
   return (
     <section className="bg-white py-12 sm:py-16 lg:py-20 relative overflow-hidden">

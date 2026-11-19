@@ -6,10 +6,20 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
+import { randomBytes } from "node:crypto";
 import { storage } from "./storage";
 
 // Check if running in Replit environment
-const isReplitEnvironment = process.env.REPLIT_DOMAINS && process.env.REPL_ID;
+const isReplitEnvironment = Boolean(process.env.REPLIT_DOMAINS && process.env.REPL_ID);
+const developmentSecret = randomBytes(32).toString("hex");
+
+export function authenticatedUserId(req: Parameters<RequestHandler>[0]): string | undefined {
+  const user = req.user as { claims?: { sub?: string }; expires_at?: number } | undefined;
+  if (!req.isAuthenticated?.() || !user?.claims?.sub || !user.expires_at || user.expires_at <= Date.now() / 1000) {
+    return undefined;
+  }
+  return user.claims.sub;
+}
 
 const getOidcConfig = memoize(
   async () => {
@@ -24,15 +34,20 @@ const getOidcConfig = memoize(
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   
-  // Use memory store for now to avoid database authentication issues
-  // TODO: Fix DATABASE_URL credentials and switch back to PostgreSQL session store
+  const production = process.env.NODE_ENV === "production";
+  if (production && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32 || !process.env.DATABASE_URL)) {
+    throw new Error("Production authentication requires DATABASE_URL and a SESSION_SECRET of at least 32 characters.");
+  }
+  const PgStore = connectPg(session);
   return session({
-    secret: process.env.SESSION_SECRET || "dev-secret-key",
+    secret: process.env.SESSION_SECRET || developmentSecret,
+    ...(production ? { store: new PgStore({ conString: process.env.DATABASE_URL, tableName: "sessions", createTableIfMissing: false }) } : {}),
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: !!isReplitEnvironment,
+      secure: production || isReplitEnvironment,
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
   });
@@ -61,6 +76,13 @@ async function upsertUser(
 }
 
 export async function setupAuth(app: Express) {
+  if (!isReplitEnvironment) {
+    app.get("/api/login", (_req, res) => {
+      res.status(503).json({ message: "Sign-in is not configured. Set REPL_ID and REPLIT_DOMAINS to enable authentication." });
+    });
+    app.get("/api/logout", (_req, res) => res.redirect("/"));
+    return;
+  }
   app.set("trust proxy", 1);
   app.use(getSession());
   
@@ -94,11 +116,6 @@ export async function setupAuth(app: Express) {
     });
   });
   
-  if (!isReplitEnvironment) {
-    console.log("Running in development mode - no Replit Auth setup required");
-    return;
-  }
-
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -108,10 +125,14 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
+    try {
+      const user = {};
+      updateUserSession(user, tokens);
+      await upsertUser(tokens.claims());
+      verified(null, user);
+    } catch (error) {
+      verified(error as Error);
+    }
   };
 
   for (const domain of process.env
@@ -147,19 +168,14 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  // Skip auth check if not in Replit environment
-  if (!isReplitEnvironment) {
-    return next();
-  }
-
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated?.() || !user?.claims?.sub || !user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
   const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
+  if (now < user.expires_at) {
     return next();
   }
 
@@ -172,6 +188,9 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   try {
     const config = await getOidcConfig();
     const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+    if (tokenResponse.claims()?.sub !== user.claims.sub) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
     updateUserSession(user, tokenResponse);
     return next();
   } catch (error) {

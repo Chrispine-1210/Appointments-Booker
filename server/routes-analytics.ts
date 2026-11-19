@@ -1,74 +1,29 @@
-import type { Express } from "express";
-import { storage } from "./storage";
+import type { Express, RequestHandler } from "express";
+import type { IStorage } from "./storage";
+import { isAuthenticated } from "./replitAuth";
+import { providerAccess, positiveId } from "./access";
 
-export function registerAnalyticsRoutes(app: Express) {
-  // Get analytics for a specific provider and date
-  app.get("/api/analytics/:providerId", async (req, res) => {
-    try {
-      const providerId = parseInt(req.params.providerId);
-      const date = req.query.date as string || new Date().toISOString().split('T')[0];
-      
-      const analytics = await storage.getAnalytics(providerId, date);
-      res.json(analytics || { totalAppointments: 0, completedAppointments: 0, cancelledAppointments: 0, totalRevenue: "0.00", averageRating: "0.00" });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch analytics" });
-    }
+export function registerAnalyticsRoutes(app: Express, storage: IStorage) {
+  const route = (handler: RequestHandler): RequestHandler => (req, res, next) => { Promise.resolve(handler(req, res, next)).catch(next); };
+  const owner = providerAccess(storage, "params", "providerId");
+  app.get("/api/analytics/:providerId", isAuthenticated, owner, route(async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    const date = typeof req.query.date === "string" ? req.query.date : new Date().toISOString().slice(0, 10);
+    res.json(await storage.getAnalytics(Number(req.params.providerId), date) || { totalAppointments: 0, completedAppointments: 0, cancelledAppointments: 0, totalRevenue: "0.00", averageRating: "0.00" });
+  }));
+  app.get("/api/providers/:providerId/reviews", route(async (req, res) => {
+    const id = positiveId(req.params.providerId);
+    if (!id) return res.status(400).json({ message: "Invalid provider ID" });
+    res.json(await storage.getReviewsByProvider(id));
+  }));
+  app.post("/api/reviews", isAuthenticated, (_req, res) => {
+    res.status(503).json({ message: "Review submission requires verified client-to-appointment ownership and is not available yet." });
   });
-
-  // Get reviews for a provider
-  app.get("/api/providers/:providerId/reviews", async (req, res) => {
-    try {
-      const providerId = parseInt(req.params.providerId);
-      const reviews = await storage.getReviewsByProvider(providerId);
-      res.json(reviews);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch reviews" });
-    }
-  });
-
-  // Create a review
-  app.post("/api/reviews", async (req, res) => {
-    try {
-      const { appointmentId, providerId, clientName, rating, comment } = req.body;
-      
-      if (!appointmentId || !providerId || !clientName || !rating) {
-        return res.status(400).json({ message: "Missing required fields" });
-      }
-
-      if (rating < 1 || rating > 5) {
-        return res.status(400).json({ message: "Rating must be between 1 and 5" });
-      }
-
-      const review = await storage.createReview({
-        appointmentId,
-        providerId,
-        clientName,
-        rating,
-        comment,
-      });
-
-      res.status(201).json(review);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create review" });
-    }
-  });
-
-  // Calculate and update provider rating
-  app.post("/api/providers/:providerId/update-rating", async (req, res) => {
-    try {
-      const providerId = parseInt(req.params.providerId);
-      const reviews = await storage.getReviewsByProvider(providerId);
-      
-      if (reviews.length === 0) {
-        return res.json({ rating: "0.00", reviewCount: 0 });
-      }
-
-      const averageRating = (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(2);
-      await storage.updateProviderRating(providerId, averageRating, reviews.length);
-      
-      res.json({ rating: averageRating, reviewCount: reviews.length });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update rating" });
-    }
-  });
+  app.post("/api/providers/:providerId/update-rating", isAuthenticated, owner, route(async (req, res) => {
+    const id = Number(req.params.providerId);
+    const reviews = await storage.getReviewsByProvider(id);
+    const rating = reviews.length ? (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(2) : "0.00";
+    await storage.updateProviderRating(id, rating, reviews.length);
+    res.json({ rating, reviewCount: reviews.length });
+  }));
 }

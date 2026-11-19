@@ -58,7 +58,7 @@ function AppRoutes() {
           {user ? <ProviderDashboard /> : <Home />}
         </Route>
         <Route path="/new-appointment">
-          {user ? <ProviderDashboard /> : <Home />}
+          {user ? <NewAppointment /> : <Home />}
         </Route>
         <Route path="/memos">
           {user ? <Memos /> : <Home />}

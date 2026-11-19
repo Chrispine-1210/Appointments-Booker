@@ -17,7 +17,7 @@ export default function ProviderSearch() {
     const matchesSearch = provider.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          provider.specialty.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesSpecialty = !selectedSpecialty || provider.specialty === selectedSpecialty;
-    const matchesRating = parseFloat(provider.rating) >= minRating;
+    const matchesRating = parseFloat(provider.rating ?? "0") >= minRating;
     return matchesSearch && matchesSpecialty && matchesRating;
   });
 
