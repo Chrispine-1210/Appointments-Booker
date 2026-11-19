@@ -55,6 +55,8 @@ npm start
 
 Production checks require a migrated database, the overlap constraint, a strong secret and an HTTPS origin. Configure the reverse proxy hop count for the actual deployment network. Build output is generated from source and ignored by Git.
 
+Vercel serves `dist/public` and routes `/api/*` to the shared Node function in `api/index.ts`. See [deployment configuration and cloud evidence](docs/VERCEL_DEPLOYMENT.md). Keep preview credentials isolated from production. Migrations run separately from builds.
+
 ## Verification
 
 ```sh
@@ -70,6 +72,6 @@ See [the verification record](docs/ENGINEERING_BASELINE.md).
 
 ## Remaining delivery work
 
-A live database and hosting environment have not been configured for this repository. Browser interactions and a deployed runtime remain unverified. Email verification, password recovery, transactional messages, reminders, payment processing and verified review submission remain delivery work. The messages and notifications pages clearly show that those services are unavailable. Working times and displayed prices currently use Malawi time and MWK.
+The dedicated Neon database is configured and migrated, with separate production and PR preview branches. Vercel is linked to this repository and its environment variables are configured; deployed runtime verification is tracked in the deployment record. Email verification, password recovery, transactional messages, reminders, payment processing and verified review submission remain delivery work. The messages and notifications pages clearly show that those services are unavailable. Working times and displayed prices currently use Malawi time and MWK.
 
 The production dependency audit is clean for this lockfile. Four moderate findings remain in development-only tooling, and the build reports a large client bundle. These results do not certify a full production security review or backup restoration.

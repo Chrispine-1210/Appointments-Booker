@@ -33,11 +33,11 @@ Provider ownership comes from the signed-in account ID. Credentials are stored s
 - Full dependency audit: 4 moderate findings in development-only tooling; 0 high/critical.
 - Whitespace check: PASS.
 
-The PostgreSQL suite uses an isolated local database. It does not certify a live Neon endpoint or a deployed hosting environment. No external database migration, production deployment or merge was performed. Browser interaction testing and backup/restore testing remain unverified.
+The PostgreSQL suite uses an isolated local database. It does not certify a live Neon endpoint or a deployed hosting environment. As of this 19 November baseline, no external database migration, production deployment or merge was performed. Later cloud configuration and verification are tracked separately in [VERCEL_DEPLOYMENT.md](VERCEL_DEPLOYMENT.md). Browser interaction testing and backup/restore testing remain unverified by this local suite.
 
 ## Activation requirements and limitations
 
-Supply the intended application's `DATABASE_URL`, direct migration URL where needed, stable `SESSION_SECRET`, canonical HTTPS `APP_ORIGIN`, and correct proxy hop count. Apply the reviewed migrations before starting the application. There is no matching configured Neon project or database URL in the inspected environment; unrelated project credentials were not reused.
+Supply the intended application's `DATABASE_URL`, direct migration URL where needed, stable `SESSION_SECRET`, canonical HTTPS `APP_ORIGIN`, and correct proxy hop count. Apply the reviewed migrations before starting the application. There was no matching configured Neon project or database URL when this baseline was prepared; unrelated project credentials were not reused. The 20 November deployment record documents the dedicated resources subsequently provisioned.
 
 Provider registration is self-service and does not establish verified professional credentials or verified ownership of an email address. Email verification, account recovery, transactional email, automatic reminders, payment settlement, verified reviews and operational audit trails require further implementation. The UI no longer fabricates conversations, notification events or booking trend figures. Booking values are not presented as settled collections.
 
