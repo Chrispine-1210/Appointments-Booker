@@ -12,11 +12,11 @@ Both resources use the connected account's free plans. No paid upgrade was reque
 
 ## Runtime configuration
 
-`vercel.json` builds the Vite client into `dist/public`, serves assets from the CDN, routes API requests to `api/index.ts`, and sends client routes to `index.html`. The Node 22 function runs in Frankfurt with a 30-second request limit. It initializes one Express app per warm instance, reuses its database pool, and retries initialization after a failed cold start. Initialization failures return a generic HTTP 503 without exposing credentials.
+`vercel.json` builds the Vite client into `dist/public`, serves assets from the CDN, routes API requests to `api/index.js`, and sends client routes to `index.html`. The Node 22 function runs in Frankfurt with a 30-second request limit. It initializes one Express app per warm instance, reuses its database pool, and retries initialization after a failed cold start. The build bundles the server into `dist/serverless.mjs` so Node can resolve all internal TypeScript imports and aliases. Initialization failures return a generic HTTP 503 without exposing credentials.
 
 The production environment contains sensitive `DATABASE_URL`, `DATABASE_URL_UNPOOLED` and `SESSION_SECRET`, plus canonical `APP_ORIGIN` and `TRUST_PROXY=1`. Runtime uses Neon's pooled connection; migrations use its direct endpoint. Preview database variables are scoped to `agent/booking-foundation-20261119` and use the isolated database branch. Preview has a separate session secret.
 
-For previews, `api/index.ts` derives the canonical origin from Vercel's trusted `VERCEL_URL` when `APP_ORIGIN` is absent. Open the deployment's exact generated hostname for write operations; alternate branch aliases are not accepted as origins. Production always uses its explicitly configured origin. Request Host headers never configure the allowed origin.
+For previews, `server/vercel.ts` derives the canonical origin from Vercel's trusted `VERCEL_URL` when `APP_ORIGIN` is absent. Open the deployment's exact generated hostname for write operations; alternate branch aliases are not accepted as origins. Production always uses its explicitly configured origin. Request Host headers never configure the allowed origin.
 
 ## Schema evidence
 

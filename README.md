@@ -55,7 +55,7 @@ npm start
 
 Production checks require a migrated database, the overlap constraint, a strong secret and an HTTPS origin. Configure the reverse proxy hop count for the actual deployment network. Build output is generated from source and ignored by Git.
 
-Vercel serves `dist/public` and routes `/api/*` to the shared Node function in `api/index.ts`. See [deployment configuration and cloud evidence](docs/VERCEL_DEPLOYMENT.md). Keep preview credentials isolated from production. Migrations run separately from builds.
+Vercel serves `dist/public` and routes `/api/*` to the shared Node function in `api/index.js`. See [deployment configuration and cloud evidence](docs/VERCEL_DEPLOYMENT.md). Keep preview credentials isolated from production. Migrations run separately from builds.
 
 ## Verification
 

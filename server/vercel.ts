@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createApp } from "../server/app";
+import { createApp } from "./app";
 
 // Preview instances have a platform-generated canonical URL. Production keeps
 // the explicitly configured APP_ORIGIN and never trusts the request Host header.

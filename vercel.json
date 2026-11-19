@@ -6,7 +6,7 @@
   "outputDirectory": "dist/public",
   "regions": ["fra1"],
   "functions": {
-    "api/index.ts": { "maxDuration": 30 }
+    "api/index.js": { "maxDuration": 30, "includeFiles": "dist/serverless.mjs" }
   },
   "rewrites": [
     { "source": "/api/:path*", "destination": "/api" },
