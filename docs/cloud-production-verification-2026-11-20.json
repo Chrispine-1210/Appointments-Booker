@@ -1,0 +1,69 @@
+{
+  "result": "PASS",
+  "dateMalawi": "2026-11-20",
+  "sourceSha": "7b69de9414948ac77ba0df2a2d38954b5ce4444a",
+  "deploymentId": "dpl_GkHS3jYu6MG6fDLhNyWnZqfokBUb",
+  "origin": "https://appointments-booker-pi.vercel.app",
+  "databaseBranch": "br-mute-butterfly-b9gp09c3",
+  "storage": "postgres",
+  "testAccountsInserted": false,
+  "publicProviderCount": 0,
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "path": "/api/auth/user",
+      "status": 401,
+      "expected": 401,
+      "pass": true,
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "path": "/api/providers",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "path": "/api/unknown",
+      "status": 404,
+      "expected": 404,
+      "pass": true,
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "path": "/assets/index-B6LOtaq2.js",
+      "status": 200,
+      "expected": 200,
+      "pass": true,
+      "contentType": "application/javascript; charset=utf-8"
+    },
+    {
+      "path": "/api/auth/login",
+      "status": 400,
+      "expected": 400,
+      "pass": true,
+      "contentType": "application/json; charset=utf-8"
+    },
+    {
+      "path": "/api/auth/logout",
+      "status": 403,
+      "expected": 403,
+      "pass": true,
+      "contentType": "application/json; charset=utf-8"
+    }
+  ]
+}

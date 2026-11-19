@@ -35,5 +35,12 @@ Future migrations should use `npm run db:migrate` with the direct connection fro
 
 - TypeScript, 21 regression tests and production build pass with the Vercel entry point included.
 - The earlier 13-test real PostgreSQL integration suite and database restart evidence remain in `ENGINEERING_BASELINE.md`.
-- Live deployment and runtime checks are pending for this source revision.
+- The tested application revision is `7b69de9414948ac77ba0df2a2d38954b5ce4444a`.
+- Preview `dpl_9gXrVPZyRsk8aYa8xJQPU7tR5Wi8` passes 16 live HTTP checks: PostgreSQL health, anonymous rejection, registration, secure/HttpOnly/SameSite cookies, authenticated reads, provider-and-service onboarding, dynamic provider context, booking creation, HTTP 409 overlap rejection, provider booking readback, cross-origin rejection, logout invalidation/replay rejection, login and JSON API 404. See `cloud-preview-verification-2026-11-20.json`.
+- A fresh preview deployment, `dpl_8VZMKzw8c1xbz47aLhCHYJTCtdkW`, accepts the existing account's login and reads its existing provider ID and booking from Neon. No database fixtures were recreated for this redeployment proof. See `cloud-redeployment-verification-2026-11-20.json`.
+- Production deployment `dpl_GkHS3jYu6MG6fDLhNyWnZqfokBUb` is READY for the same tested revision at the configured production origin. Eight live production checks pass: PostgreSQL health (200), anonymous account access (401), empty provider discovery (200), JSON API 404, login HTML and JavaScript asset delivery (200), invalid login validation (400) and cross-origin write rejection (403). See `cloud-production-verification-2026-11-20.json`. All signup/onboarding/booking fixtures remain confined to the isolated preview database. Production database readback confirms zero users, providers and appointments after preview verification.
+- `npm audit --omit=dev` reports zero findings for the deployed lockfile. Four moderate development-only findings and the large client bundle remain recorded in the baseline.
+- GitHub Actions run `44628258818`, job `135927736262`, fails with no executable steps and an empty runner name. No manual rerun was performed; the available evidence does not establish its startup root cause.
 - No merge has been performed. Backup restoration, email verification/recovery, delivery services, payments and professional credential verification remain outstanding.
+
+These checks verify live HTTP behavior and database persistence across application deployments. They do not certify visual browser journeys or an independent backup restoration. This evidence update changes documentation only; application source is the tested revision above.
