@@ -143,9 +143,12 @@ export default function ProviderSettings() {
                   </span>
                 </div>
                 <p className="small muted">
-                  Email verification and self-service password recovery are not
-                  available yet. Changing your public contact email does not
-                  change your sign-in email.
+                  <Link href="/forgot-password" className="text-link">
+                    Request a password reset
+                  </Link>
+                  . Recovery requires configured email delivery. Email ownership
+                  verification remains separate. Changing your public contact
+                  email does not change your sign-in email.
                 </p>
               </div>
             ) : (

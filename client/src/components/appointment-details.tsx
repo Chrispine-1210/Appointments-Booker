@@ -46,6 +46,22 @@ export function AppointmentDetails({
   const { data: services = [] } = useQuery<Service[]>({
     queryKey: [`/api/providers/${appointment.providerId}/services`],
   });
+  const payment = useQuery<{ enabled: boolean; mode: string | null }>({
+    queryKey: [`/api/appointments/${appointment.id}/payment-options`],
+  });
+  const checkout = useMutation({
+    mutationFn: async () =>
+      (
+        await apiRequest(
+          "POST",
+          `/api/appointments/${appointment.id}/checkout`,
+          {},
+        )
+      ).json(),
+    onSuccess: (data) => {
+      window.location.assign(data.checkoutUrl);
+    },
+  });
   const service = services.find((s) => s.id === appointment.serviceId);
   const slots = useQuery<string[]>({
     queryKey: [
@@ -121,6 +137,29 @@ export function AppointmentDetails({
           </div>
           <StatusBadge status={appointment.status} />
         </div>
+        {payment.data?.enabled && (
+          <div className="notice section-space">
+            <p>
+              {payment.data.mode === "test"
+                ? "Test checkout — no real payment"
+                : "Pay securely through this professional’s payment provider."}
+            </p>
+            <button
+              className="btn btn-primary"
+              disabled={checkout.isPending}
+              onClick={() => checkout.mutate()}
+            >
+              {checkout.isPending
+                ? "Opening checkout…"
+                : payment.data.mode === "test"
+                  ? "Open test checkout"
+                  : "Pay online"}
+            </button>
+            {checkout.error && (
+              <p className="form-error">{checkout.error.message}</p>
+            )}
+          </div>
+        )}
         <dl className="detail-grid section-space">
           <div>
             <dt>Date</dt>

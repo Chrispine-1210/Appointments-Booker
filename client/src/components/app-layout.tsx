@@ -39,6 +39,7 @@ const providerLinks = [
   { href: "/tasks", label: "Tasks", icon: ClipboardList },
   { href: "/memos", label: "Notes", icon: NotebookPen },
   { href: "/notifications", label: "Activity", icon: Activity },
+  { href: "/operations", label: "Operations", icon: BriefcaseBusiness },
   { href: "/settings", label: "Settings", icon: Settings2 },
   { href: "/my-bookings", label: "My own bookings", icon: CalendarCheck2 },
 ];
@@ -60,6 +61,7 @@ const workspacePaths = [
   "/messages",
   "/notifications",
   "/my-bookings",
+  "/operations",
 ];
 export default function AppLayout({ children }: { children: ReactNode }) {
   const [location, navigate] = useLocation();

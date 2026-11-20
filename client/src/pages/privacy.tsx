@@ -42,10 +42,9 @@ export default function Privacy() {
         <p>
           Use your professional's contact details for questions about an
           appointment or the information provided for that service. Update your
-          professional profile in Settings. Automated account erasure, email
-          verification and self-service password recovery are not currently
-          offered. There is no automatic deletion schedule presented by this
-          application.
+          professional profile in Settings. Automated account erasure and email
+          ownership verification are not currently offered. There is no
+          automatic deletion schedule presented by this application.
         </p>
       </section>
     </div>

@@ -35,5 +35,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install PostgreSQL 18 backup clients
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsS https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc > /dev/null
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-18
+      - run: node scripts/prepare-integration.mjs
       - run: npm run verify:postgres
       - run: npm audit --omit=dev --audit-level=low

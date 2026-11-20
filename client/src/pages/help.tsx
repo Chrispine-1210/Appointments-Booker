@@ -25,7 +25,7 @@ const topics = [
   },
   {
     q: "How do payments work?",
-    a: "Prices are displayed in Malawi kwacha (MWK). This application does not process card, mobile money or other payments. Arrange payment directly with the professional. A booking value or pending payment is not evidence that money has been collected.",
+    a: "Prices are displayed in Malawi kwacha (MWK). Online checkout is offered only when the professional has an authorized payment gateway configured. Otherwise, arrange payment directly with the professional. A gateway payment is verified by the server before it is recorded; bank payouts and refunds remain with the gateway. A booking value or pending payment is not evidence that money has been collected.",
   },
   {
     q: "What time zone does my appointment use?",
@@ -37,7 +37,7 @@ const topics = [
   },
   {
     q: "Are email recovery and professional verification available?",
-    a: "Email verification and self-service password recovery are not available yet. Keep your credentials secure. Profiles are self-published and do not prove professional qualifications; confirm those directly with the professional.",
+    a: "Password recovery is available through the Forgot password link when email delivery is configured. A reset link expires after 15 minutes and can be used once. Email ownership verification is separate. Keep your credentials secure. Profiles are self-published and do not prove professional qualifications; confirm those directly with the professional.",
   },
 ];
 export default function Help() {

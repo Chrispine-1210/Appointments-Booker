@@ -6,10 +6,25 @@
   "outputDirectory": "dist/public",
   "regions": ["fra1"],
   "functions": {
-    "api/index.js": { "maxDuration": 30, "includeFiles": "dist/serverless.mjs" }
+    "api/index.js": {
+      "maxDuration": 60,
+      "includeFiles": "dist/serverless.mjs"
+    }
   },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api" },
-    { "source": "/((?!api(?:/|$)).*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api"
+    },
+    {
+      "source": "/((?!api(?:/|$)).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/jobs/messages",
+      "schedule": "0 5 * * *"
+    }
   ]
 }

@@ -8,6 +8,9 @@ import { LoadingState } from "@/components/product-ui";
 import AppLayout from "@/components/app-layout";
 const Home = lazy(() => import("@/pages/home"));
 const Login = lazy(() => import("@/pages/login"));
+const PasswordRecovery = lazy(() => import("@/pages/password-recovery"));
+const PaymentReturn = lazy(() => import("@/pages/payment-return"));
+const OperationsPage = lazy(() => import("@/pages/operations"));
 const Onboarding = lazy(() => import("@/pages/onboarding"));
 const FindProviders = lazy(() => import("@/pages/find-providers"));
 const ProviderDashboard = lazy(() => import("@/pages/provider-dashboard"));
@@ -39,6 +42,14 @@ function AppRoutes() {
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/login" component={Login} />
+          <Route path="/forgot-password" component={PasswordRecovery} />
+          <Route path="/reset-password" component={PasswordRecovery} />
+          <Route path="/payment-return" component={PaymentReturn} />
+          <Route path="/operations">
+            <AccountGate provider>
+              <OperationsPage />
+            </AccountGate>
+          </Route>
           <Route path="/onboarding">
             <AccountGate>
               <Onboarding />

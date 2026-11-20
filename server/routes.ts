@@ -14,6 +14,8 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { validDate, timeMinutes } from "./scheduling";
+import { Operations } from "./operations";
+import { registerOperationalRoutes } from "./routes-operations";
 
 const publicBookingSchema = insertAppointmentSchema
   .omit({
@@ -42,10 +44,12 @@ const publicProvider = ({
 
 export async function registerRoutes(
   app: Express,
-  options: { storage?: IStorage; setupAuth?: typeof setupAuth } = {},
+  options: { storage?: IStorage; setupAuth?: typeof setupAuth; operations?: Operations } = {},
 ): Promise<Server> {
   const storage = options.storage ?? (await createStorage());
-  await (options.setupAuth ?? setupAuth)(app, storage);
+  const operations=options.operations ?? new Operations(storage);
+  await (options.setupAuth ?? setupAuth)(app, storage, operations);
+  registerOperationalRoutes(app,storage,operations);
   registerAnalyticsRoutes(app, storage);
 
   const route =
@@ -303,6 +307,7 @@ export async function registerRoutes(
         );
       }
       res.status(201).json(appointment);
+      operations.backgroundDelivery();
     }),
   );
   app.get(
@@ -364,6 +369,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid service or duration" });
       }
       res.json(await storage.updateAppointment(existing.id, data));
+      operations.backgroundDelivery();
     }),
   );
   for (const action of ["cancel", "reschedule"] as const) {
@@ -397,9 +403,8 @@ export async function registerRoutes(
           });
         if (action === "cancel") {
           z.object({}).strict().parse(req.body);
-          return res.json(
-            await storage.updateAppointment(id, { status: "cancelled" }),
-          );
+          const updated=await storage.updateAppointment(id,{status:'cancelled'});
+          res.json(updated); operations.backgroundDelivery(); return;
         }
         const data = insertAppointmentSchema
           .pick({ appointmentDate: true, startTime: true, endTime: true })
@@ -424,6 +429,7 @@ export async function registerRoutes(
             .status(400)
             .json({ message: "Choose a future appointment time" });
         res.json(await storage.updateAppointment(id, data));
+        operations.backgroundDelivery();
       }),
     );
   }

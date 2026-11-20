@@ -817,3 +817,590 @@ test("service editing and archival preserve PostgreSQL booking history and statu
     "completed",
   );
 });
+
+// Operational workflows use a real PostgreSQL database and mocked external HTTP.
+// No test messages or payments are sent to external accounts.
+test("operational recovery consumes a single-use secret and revokes sessions across workers", async () => {
+  const { Operations, tokenDigest } = await import("../server/operations");
+  const { hashPassword } = await import("../server/auth");
+  const oldEnv = { ...process.env };
+  Object.assign(process.env, {
+    SESSION_SECRET: "integration-only-session-secret-at-least-32-characters",
+    RESEND_API_KEY: "fixture-only",
+    EMAIL_FROM: "Fixture <sender@example.invalid>",
+    APP_ORIGIN: "https://booking.example",
+  });
+  try {
+    const email = `${prefix}-recovery@example.invalid`;
+    const response = await api(first, "/api/auth/register", "POST", {
+      email,
+      password,
+      firstName: "Reset",
+      lastName: "Fixture",
+    });
+    assert.equal(response.status, 201);
+    const cookie = cookieFrom(response);
+    const sent: any[] = [];
+    const ops = new Operations(storage, async (_url, options) => {
+      sent.push(JSON.parse(String(options?.body)));
+      return Response.json({ id: "mock-accepted-" + sent.length });
+    });
+    await ops.issueReset(email);
+    assert.equal((await ops.deliver(1)).accepted, 1);
+    const token = sent[0].text.match(/#([a-f0-9]{64})/)[1];
+    const persisted = await db.execute(
+      sql`select * from password_resets where token_hash=${tokenDigest(token)}`,
+    );
+    assert.equal(persisted.rows.length, 1);
+    assert.ok(!JSON.stringify(persisted.rows).includes(token));
+    assert.equal((await ops.deliver(1)).accepted, 0);
+    assert.equal(
+      (
+        await api(first, "/api/auth/reset-password", "POST", {
+          token,
+          password: "replacement-password-at-least-12",
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await api(second, "/api/auth/user", "GET", undefined, cookie)).status,
+      401,
+    );
+    assert.equal(
+      (await api(second, "/api/auth/login", "POST", { email, password }))
+        .status,
+      401,
+    );
+    assert.equal(
+      (
+        await api(second, "/api/auth/login", "POST", {
+          email,
+          password: "replacement-password-at-least-12",
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await api(first, "/api/auth/reset-password", "POST", {
+          token,
+          password: "another-password-at-least-12",
+        })
+      ).status,
+      400,
+    );
+    // Two different outstanding links for one account cannot both win.
+    await ops.issueReset(email);
+    await ops.deliver(2);
+    await ops.issueReset(email);
+    await ops.deliver(2);
+    const tokens = sent
+      .filter((m) => m.subject === "Reset your BookingPro password")
+      .slice(-2)
+      .map((m) => m.text.match(/#([a-f0-9]{64})/)[1]);
+    const changed = await hashPassword("concurrent-new-password");
+    const outcomes = await Promise.allSettled(
+      tokens.map((t) => ops.consumeReset(tokenDigest(t), changed)),
+    );
+    assert.equal(outcomes.filter((r) => r.status === "fulfilled").length, 1);
+    assert.equal(outcomes.filter((r) => r.status === "rejected").length, 1);
+    await ops.issueReset(email);
+    await db.execute(
+      sql`update password_resets set expires_at=now()-interval '1 second' where used_at is null`,
+    );
+    const expired = await db.execute(
+      sql`select token_hash from password_resets where user_id=${persisted.rows[0].user_id} and used_at is null`,
+    );
+    assert.equal(
+      await ops.resetValid(String(expired.rows[0].token_hash)),
+      false,
+    );
+  } finally {
+    for (const key of Object.keys(process.env))
+      if (!(key in oldEnv)) delete process.env[key];
+    Object.assign(process.env, oldEnv);
+  }
+});
+
+test("durable booking outbox has atomic writes, shared leases, safe retries and stale suppression", async () => {
+  const { Operations } = await import("../server/operations");
+  const oldEnv = { ...process.env };
+  Object.assign(process.env, {
+    SESSION_SECRET: "integration-only-session-secret-at-least-32-characters",
+    RESEND_API_KEY: "fixture-only",
+    EMAIL_FROM: "sender@example.invalid",
+  });
+  try {
+    await db.execute(sql`update message_outbox set status='skipped'`);
+    const a = await storage.createAppointment({
+      ...booking("15:00", "16:00"),
+      appointmentDate: "2099-01-08",
+    });
+    const queued = await db.execute(
+      sql`select id from message_outbox where appointment_id=${a.id}`,
+    );
+    assert.equal(queued.rows.length, 1);
+    await assert.rejects(() =>
+      db.transaction(async (tx) => {
+        await tx.execute(
+          sql`update appointments set status='completed' where id=${a.id}`,
+        );
+        throw new Error("rollback fixture");
+      }),
+    );
+    assert.equal(
+      (
+        await db.execute(
+          sql`select id from message_outbox where appointment_id=${a.id}`,
+        )
+      ).rows.length,
+      1,
+    );
+    const calls: any[] = [];
+    const http: typeof fetch = async (_url, options) => {
+      calls.push(options);
+      await new Promise((r) => setTimeout(r, 30));
+      return Response.json({ id: "mock-outbox" });
+    };
+    const aOps = new Operations(storage, http),
+      bOps = new Operations(storage, http);
+    await Promise.all([aOps.deliver(1), bOps.deliver(1)]);
+    assert.equal(calls.length, 1);
+    const id = String(queued.rows[0].id);
+    await db.execute(
+      sql`update message_outbox set status='processing',lease_until=now()-interval '1 second' where id=${id}::uuid`,
+    );
+    await aOps.deliver(1);
+    assert.equal(calls.length, 2);
+    assert.equal(
+      calls[0].headers["Idempotency-Key"],
+      calls[1].headers["Idempotency-Key"],
+    );
+    await storage.updateAppointment(a.id, { status: "cancelled" });
+    const failing = new Operations(
+      storage,
+      async () => new Response("", { status: 503 }),
+    );
+    assert.equal((await failing.deliver(1)).failed, 1);
+    const pending = await db.execute(
+      sql`select attempts,status from message_outbox where appointment_id=${a.id} and status='pending'`,
+    );
+    assert.equal(pending.rows.length, 1);
+    assert.equal(pending.rows[0].attempts, 1);
+    await db.execute(
+      sql`update message_outbox set available_at=now(),attempts=4 where appointment_id=${a.id} and status='pending'`,
+    );
+    await failing.deliver(1);
+    assert.equal(
+      (
+        await db.execute(
+          sql`select status from message_outbox where appointment_id=${a.id} order by created_at desc limit 1`,
+        )
+      ).rows[0].status,
+      "failed",
+    );
+    await storage.updateAppointment(a.id, { status: "confirmed" });
+    await storage.updateAppointment(a.id, { status: "cancelled" });
+    await aOps.deliver(2); // Old revisions are skipped and dedupe keys prevent replay.
+    assert.equal(calls.length, 3);
+  } finally {
+    for (const key of Object.keys(process.env))
+      if (!(key in oldEnv)) delete process.env[key];
+    Object.assign(process.env, oldEnv);
+  }
+});
+
+test("payment verification rejects mismatches, confines merchant ownership and separates test from live collections", async () => {
+  const { Operations } = await import("../server/operations");
+  const { createHmac } = await import("node:crypto");
+  const oldEnv = { ...process.env };
+  Object.assign(process.env, {
+    PAYCHANGU_SECRET_KEY: "fixture-only",
+    PAYCHANGU_PROVIDER_ID: String(provider.id),
+    PAYCHANGU_MODE: "test",
+    PAYCHANGU_WEBHOOK_SECRET: "fixture-webhook-secret",
+    APP_ORIGIN: "https://booking.example",
+  });
+  try {
+    const a = await storage.createAppointment({
+      ...booking("09:00", "10:00"),
+      appointmentDate: "2099-01-07",
+    });
+    let mismatch = "";
+    let verificationCount = 0;
+    const ops = new Operations(storage, async (url, options) => {
+      if (String(url).endsWith("/payment"))
+        return Response.json({
+          status: "success",
+          data: {
+            checkout_url:
+              process.env.PAYCHANGU_MODE === "live"
+                ? "https://checkout.paychangu.com/fixture"
+                : "https://test-checkout.paychangu.com/fixture",
+          },
+        });
+      verificationCount++;
+      const ref = String(url).split("/").at(-1)!;
+      return Response.json({
+        status: "success",
+        data: {
+          tx_ref: mismatch === "reference" ? "bp-incorrect" : ref,
+          currency: mismatch === "currency" ? "USD" : "MWK",
+          mode: mismatch === "mode" ? "test" : process.env.PAYCHANGU_MODE,
+          amount: mismatch === "amount" ? "1.00" : a.paymentAmount,
+          status: "success",
+          reference: "mock-" + process.env.PAYCHANGU_MODE + "-" + a.id,
+        },
+      });
+    });
+    assert.equal(ops.paymentReady(otherProvider.id), false);
+    const checkout = await ops.createCheckout(a.id);
+    assert.equal(
+      (await ops.createCheckout(a.id)).reference,
+      checkout.reference,
+    );
+    for (const kind of ["amount", "currency", "reference"]) {
+      mismatch = kind;
+      await assert.rejects(() => ops.verifyPayment(checkout.reference));
+      assert.equal(
+        (await storage.getAppointment(a.id))?.paymentStatus,
+        "pending",
+      );
+    }
+    mismatch = "";
+    assert.equal(
+      (await ops.verifyPayment(checkout.reference)).status,
+      "verified_test",
+    );
+    assert.equal(
+      (await storage.getAppointment(a.id))?.paymentStatus,
+      "pending",
+    );
+    process.env.PAYCHANGU_MODE = "live";
+    const live = await ops.createCheckout(a.id);
+    mismatch = "mode";
+    await assert.rejects(() => ops.verifyPayment(live.reference));
+    mismatch = "";
+    assert.equal((await ops.verifyPayment(live.reference)).status, "paid");
+    assert.equal(
+      (await storage.getAppointment(a.id))?.paymentStatus,
+      "completed",
+    );
+    const count = verificationCount;
+    await ops.verifyPayment(live.reference);
+    assert.equal(verificationCount, count);
+    const body = Buffer.from(JSON.stringify({ tx_ref: live.reference }));
+    const signature = createHmac(
+      "sha256",
+      process.env.PAYCHANGU_WEBHOOK_SECRET!,
+    )
+      .update(body)
+      .digest("hex");
+    assert.equal(ops.validWebhook(body, signature), true);
+    assert.equal(ops.validWebhook(Buffer.from("{}"), signature), false);
+    assert.equal(ops.validWebhook(body, "invalid"), false);
+  } finally {
+    for (const key of Object.keys(process.env))
+      if (!(key in oldEnv)) delete process.env[key];
+    Object.assign(process.env, oldEnv);
+  }
+});
+
+test("encrypted logical backup restores matching data and booking constraints into an independent empty target", async () => {
+  if (!process.env.RESTORE_DATABASE_URL || !process.env.BACKUP_ENCRYPTION_KEY)
+    throw new Error(
+      "Backup certification requires an empty independent restore target",
+    );
+  const { backup, restore } = await import("../scripts/backup.mjs");
+  const { readFile, unlink } = await import("node:fs/promises");
+  const file = `/tmp/booker-restore-certification-${prefix}.booker-backup`;
+  try {
+    const exported = await backup(
+      connectionString,
+      file,
+      process.env.BACKUP_ENCRYPTION_KEY,
+    );
+    assert.equal(exported.encrypted, true);
+    const content = await readFile(file, "utf8");
+    assert.ok(!content.includes(ownerEmail));
+    await assert.rejects(() =>
+      restore(process.env.RESTORE_DATABASE_URL, file, "f".repeat(64)),
+    );
+    const restored = await restore(
+      process.env.RESTORE_DATABASE_URL,
+      file,
+      process.env.BACKUP_ENCRYPTION_KEY,
+    );
+    assert.equal(restored.contentsMatch, true);
+    const target = connectDatabase(process.env.RESTORE_DATABASE_URL);
+    const recovered = new PostgresStorage(
+      target.db,
+      target.pool,
+      target.sessionStore,
+    );
+    try {
+      await recovered.assertReady();
+      assert.equal(
+        (await recovered.getProvider(provider.id))?.ownerUserId,
+        ownerId,
+      );
+      assert.equal(
+        (await recovered.getAppointmentsByProvider(provider.id)).length,
+        (await storage.getAppointmentsByProvider(provider.id)).length,
+      );
+      const collision = (
+        await recovered.getAppointmentsByProvider(provider.id)
+      ).find((a) => a.status !== "cancelled")!;
+      await assert.rejects(() =>
+        recovered.createAppointment({
+          ...booking(collision.startTime, collision.endTime),
+          appointmentDate: collision.appointmentDate,
+        }),
+      );
+      assert.equal(
+        (
+          await target.db.execute(
+            sql`select count(*)::int as count from sessions`,
+          )
+        ).rows[0].count,
+        0,
+      );
+    } finally {
+      await recovered.close();
+    }
+    await assert.rejects(() =>
+      restore(
+        process.env.RESTORE_DATABASE_URL,
+        file,
+        process.env.BACKUP_ENCRYPTION_KEY,
+      ),
+    );
+  } finally {
+    await unlink(file).catch(() => {});
+  }
+});
+
+test("operational HTTP routes conceal recovery accounts, authenticate webhooks and enforce provider scope", async () => {
+  const { Operations } = await import("../server/operations");
+  const { createApp } = await import("../server/app");
+  const { hashPassword } = await import("../server/auth");
+  const { createHmac } = await import("node:crypto");
+  const oldEnv = { ...process.env };
+  Object.assign(process.env, {
+    SESSION_SECRET: "operational-route-session-secret-at-least-32-characters",
+    RESEND_API_KEY: "fixture-only",
+    EMAIL_FROM: "sender@example.invalid",
+    APP_ORIGIN: "http://127.0.0.1",
+    PAYCHANGU_SECRET_KEY: "fixture-only",
+    PAYCHANGU_MODE: "test",
+    PAYCHANGU_WEBHOOK_SECRET: "route-webhook-fixture",
+  });
+  const mails: any[] = [];
+  const ops = new Operations(storage, async (url, options) =>
+    String(url).includes("resend")
+      ? (mails.push(JSON.parse(String(options?.body))),
+        Response.json({ id: "mock-route-email" }))
+      : String(url).endsWith("/payment")
+        ? Response.json({
+            status: "success",
+            data: { checkout_url: "https://test-checkout.paychangu.com/route" },
+          })
+        : Response.json({
+            status: "success",
+            data: {
+              tx_ref: String(url).split("/").at(-1),
+              currency: "MWK",
+              amount: "2500.00",
+              mode: "test",
+              status: "success",
+              reference: "route-verified",
+            },
+          }),
+  );
+  ops.backgroundDelivery = () => {};
+  const local = await createApp({ storage, operations: ops });
+  await new Promise<void>((r) => local.server.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(local.server.address() as any).port}`;
+  const request = (
+    path: string,
+    method = "GET",
+    body?: unknown,
+    cookie?: string,
+    extra: Record<string, string> = {},
+  ) =>
+    fetch(base + path, {
+      method,
+      headers: {
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(cookie ? { cookie } : {}),
+        ...extra,
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  try {
+    const email = `${prefix}-route@example.invalid`;
+    const user = await storage.registerUser({
+      email,
+      firstName: "Route",
+      lastName: "Fixture",
+      passwordHash: await hashPassword(password),
+    });
+    const p = await storage.createProvider(
+      {
+        name: "Route Fixture",
+        specialty: "Testing",
+        email: `${prefix}-route-provider@example.invalid`,
+        phone: "+265000000000",
+        workingHours: {
+          start: "08:00",
+          end: "17:00",
+          days: [0, 1, 2, 3, 4, 5, 6],
+        },
+      },
+      user.id,
+    );
+    const s = await storage.createService({
+      providerId: p.id,
+      name: "Route service",
+      price: "2500.00",
+      duration: 60,
+    });
+    process.env.PAYCHANGU_PROVIDER_ID = String(p.id);
+    const login = await request("/api/auth/login", "POST", { email, password });
+    assert.equal(login.status, 200);
+    const cookie = cookieFrom(login);
+    assert.equal((await request("/api/operations")).status, 401);
+    assert.equal(
+      (await request("/api/operations", "GET", undefined, cookie)).status,
+      200,
+    );
+    const known = await request("/api/auth/forgot-password", "POST", { email });
+    const unknown = await request("/api/auth/forgot-password", "POST", {
+      email: `${prefix}-missing@example.invalid`,
+    });
+    assert.equal(known.status, 200);
+    assert.equal(unknown.status, 200);
+    assert.deepEqual(await known.json(), await unknown.json());
+    assert.equal((await request("/api/jobs/messages")).status, 401);
+    const bookingResponse = await request(
+      "/api/appointments",
+      "POST",
+      {
+        providerId: p.id,
+        serviceId: s.id,
+        clientName: "Route client",
+        clientEmail: "route@example.invalid",
+        clientPhone: "+265000000000",
+        appointmentDate: "2099-01-10",
+        startTime: "09:00",
+        endTime: "10:00",
+      },
+      cookie,
+    );
+    assert.equal(bookingResponse.status, 201);
+    const a = await bookingResponse.json();
+    assert.equal(
+      (await request(`/api/appointments/${a.id}/checkout`, "POST", {})).status,
+      403,
+    );
+    const checkout = await request(
+      `/api/appointments/${a.id}/checkout`,
+      "POST",
+      {},
+      cookie,
+    );
+    assert.equal(checkout.status, 200);
+    const payment = await checkout.json();
+    assert.equal(
+      (await request(`/api/payments/reference/${payment.reference}`)).status,
+      403,
+    );
+    assert.equal(
+      (
+        await request(
+          `/api/payments/reference/${payment.reference}`,
+          "GET",
+          undefined,
+          cookie,
+        )
+      ).status,
+      200,
+    );
+    const payload = { tx_ref: payment.reference };
+    const signature = createHmac(
+      "sha256",
+      process.env.PAYCHANGU_WEBHOOK_SECRET!,
+    )
+      .update(JSON.stringify(payload))
+      .digest("hex");
+    assert.equal(
+      (
+        await request("/api/payments/webhook", "POST", payload, undefined, {
+          Origin: "https://foreign.example",
+          Signature: "invalid",
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
+      (
+        await request("/api/payments/webhook", "POST", payload, undefined, {
+          Origin: "https://foreign.example",
+          Signature: signature,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (await storage.getAppointment(a.id))?.paymentStatus,
+      "pending",
+    );
+    assert.equal(
+      (
+        await request("/api/auth/register", "POST", {}, undefined, {
+          Origin: "https://foreign.example",
+        })
+      ).status,
+      403,
+    );
+    // A password change between credential read and session creation must not
+    // authenticate an old password with the new session version.
+    const originalCredential = storage.getCredential.bind(storage);
+    const replacementHash = await hashPassword("race-replacement-password");
+    storage.getCredential = async (requestedEmail) => {
+      const stale = await originalCredential(requestedEmail);
+      if (requestedEmail === email) {
+        await db.execute(
+          sql`update auth_credentials set password_hash=${replacementHash},version=version+1 where user_id=${user.id}`,
+        );
+        storage.getCredential = originalCredential;
+      }
+      return stale;
+    };
+    try {
+      assert.equal(
+        (await request("/api/auth/login", "POST", { email, password })).status,
+        401,
+      );
+      assert.equal(
+        (await request("/api/auth/user", "GET", undefined, cookie)).status,
+        401,
+      );
+    } finally {
+      storage.getCredential = originalCredential;
+    }
+    delete process.env.RESEND_API_KEY;
+    assert.equal(
+      (await request("/api/auth/forgot-password", "POST", { email })).status,
+      503,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      local.server.close((e) => (e ? reject(e) : resolve())),
+    );
+    for (const key of Object.keys(process.env))
+      if (!(key in oldEnv)) delete process.env[key];
+    Object.assign(process.env, oldEnv);
+  }
+});

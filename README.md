@@ -62,11 +62,12 @@ Vercel serves `dist/public` and routes `/api/*` to the shared Node function in `
 ```sh
 npm run verify
 # Dedicated disposable database; name must begin appointments_test:
-TEST_DATABASE_URL=postgresql://.../appointments_test npm run test:postgres
+# Supply a separate empty restore database and a temporary encryption key too:
+TEST_DATABASE_URL=postgresql://.../appointments_test RESTORE_DATABASE_URL=postgresql://.../appointments_test_restore RESTORE_TARGET_CONFIRM=appointments_test_restore BACKUP_ENCRYPTION_KEY=<64-hex-characters> npm run test:postgres
 npm audit --omit=dev
 ```
 
-`npm run verify` runs TypeScript, 24 HTTP/query/security regressions and the production build. The PostgreSQL suite adds 15 integration tests, including separate API processes, application restart, persistent sessions, onboarding rollback, guest privacy, logout replay and secure production cookies. CI provisions PostgreSQL and runs both suites plus the production dependency audit.
+`npm run verify` runs TypeScript, 24 HTTP/query/security regressions and the production build. The PostgreSQL suite adds 20 integration tests, including separate API processes, application restart, persistent sessions, onboarding rollback, guest privacy, logout replay and secure production cookies. CI provisions PostgreSQL and runs both suites plus the production dependency audit.
 
 See [the verification record](docs/ENGINEERING_BASELINE.md).
 
@@ -74,6 +75,6 @@ The complete public and private interface is documented in [interface completion
 
 ## Remaining delivery work
 
-The app is deployed at [appointments-booker-pi.vercel.app](https://appointments-booker-pi.vercel.app/login), using the dedicated Neon production database. The isolated preview passes live login, onboarding, booking, security and redeployment-persistence checks; see the deployment record for source revisions and evidence. Create your own account at `/login` and complete provider onboarding. No default production accounts or passwords exist. Email verification, password recovery, transactional messages, reminders, payment processing and verified review submission remain delivery work. The messages and notifications pages clearly show that those services are unavailable. Working times and displayed prices currently use Malawi time and MWK.
+The app is deployed at [appointments-booker-pi.vercel.app](https://appointments-booker-pi.vercel.app/login), using the dedicated Neon production database. The isolated preview passes live login, onboarding, booking, security and redeployment-persistence checks; see the deployment record for source revisions and evidence. Create your own account at `/login` and complete provider onboarding. No default production accounts or passwords exist. Password recovery, a durable email outbox, reminders and PayChangu verification are implemented with explicit activation gates. Configure an authorized sender/merchant before using them. Independent restoration of the production snapshot has passed. See [operational workflows and activation requirements](docs/OPERATIONAL_WORKFLOWS.md). Email ownership verification, SMS/push delivery and verified review submission remain delivery work. Working times and displayed prices currently use Malawi time and MWK.
 
-The production dependency audit is clean for this lockfile. Four moderate findings remain in development-only tooling, and routes now load in separate chunks with an initial JavaScript entry of approximately 286 KB. These results do not certify a full production security review or backup restoration.
+The production dependency audit is clean for this lockfile. Four moderate findings remain in development-only tooling, and routes now load in separate chunks with an initial JavaScript entry of approximately 286 KB. These results do not certify a full production security review, real external email delivery or real gateway/bank settlement.

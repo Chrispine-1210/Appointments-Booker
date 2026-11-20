@@ -34,10 +34,11 @@ export default function Terms() {
         </p>
         <h2>Prices and payment</h2>
         <p>
-          Prices are displayed in Malawi kwacha. BookingPro does not currently
-          process or settle payments. Arrange payment, refund terms and any
-          service-specific cancellation conditions directly with the
-          professional before your visit. A pending booking value is not a
+          Prices are displayed in Malawi kwacha. BookingPro does not
+          independently settle funds to a bank account. Online checkout is
+          available only for configured professionals. Agree payment, refund
+          terms and any service-specific cancellation conditions directly with
+          the professional before your visit. A pending booking value is not a
           receipt.
         </p>
         <h2>Availability and support</h2>

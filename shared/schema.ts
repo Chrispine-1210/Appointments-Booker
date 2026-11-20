@@ -1,5 +1,6 @@
-import { sql } from 'drizzle-orm';
+import { sql } from "drizzle-orm";
 import {
+  uuid,
   index,
   uniqueIndex,
   unique,
@@ -17,79 +18,111 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-export const providers = pgTable("providers", {
-  id: serial("id").primaryKey(),
-  ownerUserId: varchar("owner_user_id").references(() => users.id),
-  name: text("name").notNull(),
-  title: text("title").default(""), // e.g. Dr., Prof., etc.
-  specialty: text("specialty").notNull(),
-  email: text("email").notNull().unique(),
-  phone: text("phone").notNull(),
-  bio: text("bio"),
-  rating: decimal("rating", { precision: 3, scale: 2 }).default("0.00"),
-  reviewCount: integer("review_count").default(0),
-  isActive: boolean("is_active").default(true),
-  workingHours: jsonb("working_hours").$type<{
-    start: string; // HH:MM
-    end: string;   // HH:MM
-    days: number[]; // 0-6
-  }>().default({
-    start: "09:00",
-    end: "17:00",
-    days: [1, 2, 3, 4, 5]
-  }),
-  socialLinks: jsonb("social_links").$type<{
-    website?: string;
-    instagram?: string;
-    twitter?: string;
-    linkedin?: string;
-    facebook?: string;
-  }>().default({}),
-}, table => [uniqueIndex("providers_owner_unique").on(table.ownerUserId)]);
+export const providers = pgTable(
+  "providers",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: varchar("owner_user_id").references(() => users.id),
+    name: text("name").notNull(),
+    title: text("title").default(""), // e.g. Dr., Prof., etc.
+    specialty: text("specialty").notNull(),
+    email: text("email").notNull().unique(),
+    phone: text("phone").notNull(),
+    bio: text("bio"),
+    rating: decimal("rating", { precision: 3, scale: 2 }).default("0.00"),
+    reviewCount: integer("review_count").default(0),
+    isActive: boolean("is_active").default(true),
+    workingHours: jsonb("working_hours")
+      .$type<{
+        start: string; // HH:MM
+        end: string; // HH:MM
+        days: number[]; // 0-6
+      }>()
+      .default({
+        start: "09:00",
+        end: "17:00",
+        days: [1, 2, 3, 4, 5],
+      }),
+    socialLinks: jsonb("social_links")
+      .$type<{
+        website?: string;
+        instagram?: string;
+        twitter?: string;
+        linkedin?: string;
+        facebook?: string;
+      }>()
+      .default({}),
+  },
+  (table) => [uniqueIndex("providers_owner_unique").on(table.ownerUserId)],
+);
 
-export const services = pgTable("services", {
-  id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull().references(() => providers.id),
-  name: text("name").notNull(),
-  description: text("description"),
-  duration: integer("duration").notNull(), // in minutes
-  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
-  isActive: boolean("is_active").default(true),
-}, table => [unique("services_id_provider_unique").on(table.id, table.providerId)]);
+export const services = pgTable(
+  "services",
+  {
+    id: serial("id").primaryKey(),
+    providerId: integer("provider_id")
+      .notNull()
+      .references(() => providers.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    duration: integer("duration").notNull(), // in minutes
+    price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+    isActive: boolean("is_active").default(true),
+  },
+  (table) => [
+    unique("services_id_provider_unique").on(table.id, table.providerId),
+  ],
+);
 
 export const timeSlots = pgTable("time_slots", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull().references(() => providers.id),
+  providerId: integer("provider_id")
+    .notNull()
+    .references(() => providers.id),
   dayOfWeek: integer("day_of_week").notNull(), // 0-6 (Sunday-Saturday)
   startTime: text("start_time").notNull(), // HH:MM format
   endTime: text("end_time").notNull(), // HH:MM format
   isAvailable: boolean("is_available").default(true),
 });
 
-export const appointments = pgTable("appointments", {
-  id: serial("id").primaryKey(),
-  clientUserId: varchar("client_user_id").references(() => users.id),
-  providerId: integer("provider_id").notNull().references(() => providers.id),
-  serviceId: integer("service_id").notNull(),
-  clientName: text("client_name").notNull(),
-  clientEmail: text("client_email").notNull(),
-  clientPhone: text("client_phone").notNull(),
-  appointmentDate: text("appointment_date").notNull(), // YYYY-MM-DD format
-  startsAt: timestamp("starts_at").notNull().defaultNow(),
-  endsAt: timestamp("ends_at").notNull().defaultNow(),
-  startTime: text("start_time").notNull(), // HH:MM format
-  endTime: text("end_time").notNull(), // HH:MM format
-  status: text("status").notNull().default("confirmed"), // confirmed, pending, cancelled, completed
-  notes: text("notes"),
-  paymentStatus: text("payment_status").default("pending"), // pending, completed, failed
-  paymentAmount: decimal("payment_amount", { precision: 10, scale: 2 }),
-  stripePaymentId: text("stripe_payment_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, table => [
-  foreignKey({ columns: [table.serviceId, table.providerId], foreignColumns: [services.id, services.providerId], name: "appointments_service_provider_fk" }),
-  index("appointments_provider_date_idx").on(table.providerId, table.appointmentDate),
-  index("appointments_client_idx").on(table.clientUserId),
-]);
+export const appointments = pgTable(
+  "appointments",
+  {
+    id: serial("id").primaryKey(),
+    clientUserId: varchar("client_user_id").references(() => users.id),
+    messageVersion: integer("message_version").notNull().default(0),
+    providerId: integer("provider_id")
+      .notNull()
+      .references(() => providers.id),
+    serviceId: integer("service_id").notNull(),
+    clientName: text("client_name").notNull(),
+    clientEmail: text("client_email").notNull(),
+    clientPhone: text("client_phone").notNull(),
+    appointmentDate: text("appointment_date").notNull(), // YYYY-MM-DD format
+    startsAt: timestamp("starts_at").notNull().defaultNow(),
+    endsAt: timestamp("ends_at").notNull().defaultNow(),
+    startTime: text("start_time").notNull(), // HH:MM format
+    endTime: text("end_time").notNull(), // HH:MM format
+    status: text("status").notNull().default("confirmed"), // confirmed, pending, cancelled, completed
+    notes: text("notes"),
+    paymentStatus: text("payment_status").default("pending"), // pending, completed, failed
+    paymentAmount: decimal("payment_amount", { precision: 10, scale: 2 }),
+    stripePaymentId: text("stripe_payment_id"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.serviceId, table.providerId],
+      foreignColumns: [services.id, services.providerId],
+      name: "appointments_service_provider_fk",
+    }),
+    index("appointments_provider_date_idx").on(
+      table.providerId,
+      table.appointmentDate,
+    ),
+    index("appointments_client_idx").on(table.clientUserId),
+  ],
+);
 
 export const reviews = pgTable("reviews", {
   id: serial("id").primaryKey(),
@@ -108,14 +141,20 @@ export const analytics = pgTable("analytics", {
   totalAppointments: integer("total_appointments").default(0),
   completedAppointments: integer("completed_appointments").default(0),
   cancelledAppointments: integer("cancelled_appointments").default(0),
-  totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0.00"),
-  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default("0.00"),
+  totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default(
+    "0.00",
+  ),
+  averageRating: decimal("average_rating", { precision: 3, scale: 2 }).default(
+    "0.00",
+  ),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const memos = pgTable("memos", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull().references(() => providers.id),
+  providerId: integer("provider_id")
+    .notNull()
+    .references(() => providers.id),
   title: text("title").notNull(),
   content: text("content").notNull(),
   category: text("category").default("general"), // general, appointment, client, personal
@@ -126,7 +165,9 @@ export const memos = pgTable("memos", {
 
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
-  providerId: integer("provider_id").notNull().references(() => providers.id),
+  providerId: integer("provider_id")
+    .notNull()
+    .references(() => providers.id),
   title: text("title").notNull(),
   description: text("description"),
   status: text("status").notNull().default("pending"), // pending, in_progress, completed, cancelled
@@ -153,7 +194,9 @@ export const sessions = pgTable(
 // User storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
@@ -164,8 +207,11 @@ export const users = pgTable("users", {
 
 // Credentials never form part of the public User type or user API response.
 export const authCredentials = pgTable("auth_credentials", {
-  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
   passwordHash: text("password_hash").notNull(),
+  version: integer("version").notNull().default(0),
 });
 
 export const authAttempts = pgTable("auth_attempts", {
@@ -174,65 +220,157 @@ export const authAttempts = pgTable("auth_attempts", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
-// Insert schemas
-export const insertProviderSchema = createInsertSchema(providers).omit({
-  id: true,
-  ownerUserId: true,
-  rating: true,
-  reviewCount: true,
-  isActive: true,
-}).extend({
-  name: z.string().trim().min(1).max(200),
-  email: z.string().email().max(320),
-  specialty: z.string().trim().min(1).max(200),
-  phone: z.string().trim().min(1).max(40),
-  workingHours: z.object({
-    start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-    end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-    days: z.array(z.number().int().min(0).max(6)).min(1).max(7),
-  }).refine(hours => hours.start < hours.end, "Working hours must end after they start").nullable().optional(),
-  socialLinks: z.object({
-    website: z.string().url().or(z.literal("")).optional(),
-    instagram: z.string().optional(), twitter: z.string().optional(),
-    linkedin: z.string().optional(), facebook: z.string().optional(),
-  }).nullable().optional(),
+// Operational tables are private: routes return explicit, scoped projections.
+export const passwordResets = pgTable("password_resets", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
 });
+export const messageOutbox = pgTable("message_outbox", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  dedupeKey: text("dedupe_key").notNull().unique(),
+  kind: text("kind").notNull(),
+  providerId: integer("provider_id").references(() => providers.id),
+  appointmentId: integer("appointment_id").references(() => appointments.id),
+  payload: jsonb("payload").notNull(),
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  availableAt: timestamp("available_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true })
+    .notNull()
+    .default(sql`now() + interval '23 hours'`),
+  leaseId: uuid("lease_id"),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  acceptedId: text("accepted_id"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+});
+export const paymentIntents = pgTable(
+  "payment_intents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    appointmentId: integer("appointment_id")
+      .notNull()
+      .references(() => appointments.id),
+    txRef: text("tx_ref").notNull().unique(),
+    amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+    currency: text("currency").notNull().default("MWK"),
+    mode: text("mode").notNull(),
+    status: text("status").notNull().default("pending"),
+    checkoutUrl: text("checkout_url"),
+    checkoutLockedUntil: timestamp("checkout_locked_until", {
+      withTimezone: true,
+    }),
+    gatewayReference: text("gateway_reference").unique(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    unique("payment_intents_appointment_mode_unique").on(
+      table.appointmentId,
+      table.mode,
+    ),
+  ],
+);
 
-export const insertServiceSchema = createInsertSchema(services).omit({
-  id: true,
-  isActive: true,
-}).extend({
-  providerId: z.number().int().positive(),
-  name: z.string().trim().min(1).max(200),
-  duration: z.number().int().min(1).max(720),
-  price: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/),
-});
+// Insert schemas
+export const insertProviderSchema = createInsertSchema(providers)
+  .omit({
+    id: true,
+    ownerUserId: true,
+    rating: true,
+    reviewCount: true,
+    isActive: true,
+  })
+  .extend({
+    name: z.string().trim().min(1).max(200),
+    email: z.string().email().max(320),
+    specialty: z.string().trim().min(1).max(200),
+    phone: z.string().trim().min(1).max(40),
+    workingHours: z
+      .object({
+        start: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+        end: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+        days: z.array(z.number().int().min(0).max(6)).min(1).max(7),
+      })
+      .refine(
+        (hours) => hours.start < hours.end,
+        "Working hours must end after they start",
+      )
+      .nullable()
+      .optional(),
+    socialLinks: z
+      .object({
+        website: z.string().url().or(z.literal("")).optional(),
+        instagram: z.string().optional(),
+        twitter: z.string().optional(),
+        linkedin: z.string().optional(),
+        facebook: z.string().optional(),
+      })
+      .nullable()
+      .optional(),
+  });
+
+export const insertServiceSchema = createInsertSchema(services)
+  .omit({
+    id: true,
+    isActive: true,
+  })
+  .extend({
+    providerId: z.number().int().positive(),
+    name: z.string().trim().min(1).max(200),
+    duration: z.number().int().min(1).max(720),
+    price: z.string().regex(/^\d{1,8}(\.\d{1,2})?$/),
+  });
 
 export const insertTimeSlotSchema = createInsertSchema(timeSlots).omit({
   id: true,
   isAvailable: true,
 });
 
-export const insertAppointmentSchema = createInsertSchema(appointments).omit({
-  id: true,
-  clientUserId: true,
-  startsAt: true,
-  endsAt: true,
-  createdAt: true,
-}).extend({
-  providerId: z.number().int().positive(),
-  serviceId: z.number().int().positive(),
-  clientName: z.string().trim().min(1).max(200),
-  clientEmail: z.string().email().max(320),
-  clientPhone: z.string().trim().min(1).max(40),
-  notes: z.string().max(5000).nullable().optional(),
-  appointmentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format").refine(value => {
-    const date = new Date(`${value}T00:00:00Z`);
-    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  }, "Invalid calendar date"),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM format"),
-  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM format"),
-});
+export const insertAppointmentSchema = createInsertSchema(appointments)
+  .omit({
+    id: true,
+    clientUserId: true,
+    messageVersion: true,
+    startsAt: true,
+    endsAt: true,
+    createdAt: true,
+  })
+  .extend({
+    providerId: z.number().int().positive(),
+    serviceId: z.number().int().positive(),
+    clientName: z.string().trim().min(1).max(200),
+    clientEmail: z.string().email().max(320),
+    clientPhone: z.string().trim().min(1).max(40),
+    notes: z.string().max(5000).nullable().optional(),
+    appointmentDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")
+      .refine((value) => {
+        const date = new Date(`${value}T00:00:00Z`);
+        return (
+          Number.isFinite(date.getTime()) &&
+          date.toISOString().slice(0, 10) === value
+        );
+      }, "Invalid calendar date"),
+    startTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM format"),
+    endTime: z
+      .string()
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Time must be in HH:MM format"),
+  });
 
 export const insertMemoSchema = createInsertSchema(memos).omit({
   id: true,
@@ -258,7 +396,9 @@ export type TimeSlot = typeof timeSlots.$inferSelect;
 export type InsertTimeSlot = z.infer<typeof insertTimeSlotSchema>;
 
 export type Appointment = typeof appointments.$inferSelect;
-export type InsertAppointment = z.infer<typeof insertAppointmentSchema> & { clientUserId?: string | null };
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema> & {
+  clientUserId?: string | null;
+};
 
 export type Review = typeof reviews.$inferSelect;
 export const insertReviewSchema = createInsertSchema(reviews).omit({

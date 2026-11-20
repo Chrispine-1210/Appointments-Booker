@@ -37,7 +37,9 @@ export interface IStorage {
   }): Promise<User>;
   getCredential(
     email: string,
-  ): Promise<{ userId: string; passwordHash: string } | undefined>;
+  ): Promise<
+    { userId: string; passwordHash: string; version: number } | undefined
+  >;
   consumeAuthAttempt(
     key: string,
     windowMs: number,
@@ -181,7 +183,8 @@ export class MemoryStorage implements IStorage {
     return user;
   }
   async getCredential(email: string) {
-    return this.credentials.get(email);
+    const entry = this.credentials.get(email);
+    return entry ? { ...entry, version: 0 } : undefined;
   }
   async consumeAuthAttempt(key: string, windowMs: number, limit: number) {
     const now = Date.now();
@@ -552,6 +555,7 @@ export class MemoryStorage implements IStorage {
       ...insertAppointment,
       id,
       clientUserId: insertAppointment.clientUserId ?? null,
+      messageVersion: 0,
       startsAt: new Date(
         `${insertAppointment.appointmentDate}T${insertAppointment.startTime}:00Z`,
       ),
@@ -616,6 +620,14 @@ export class MemoryStorage implements IStorage {
       (existing.status === "cancelled" && updated.status !== "cancelled")
     )
       this.validateAppointment(updated, id);
+    if (
+      ["appointmentDate", "startTime", "endTime", "status", "clientEmail"].some(
+        (key) =>
+          updated[key as keyof Appointment] !==
+          existing[key as keyof Appointment],
+      )
+    )
+      updated.messageVersion = existing.messageVersion + 1;
     this.appointments.set(id, updated);
     return updated;
   }

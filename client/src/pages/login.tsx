@@ -223,6 +223,11 @@ export default function Login() {
                   .
                 </p>
               )}
+              {!register && (
+                <Link href="/forgot-password" className="text-link">
+                  Forgot your password?
+                </Link>
+              )}
             </form>
             <div className="auth-switch">
               {register ? "Already have an account?" : "New to BookingPro?"}{" "}

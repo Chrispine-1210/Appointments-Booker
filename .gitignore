@@ -9,3 +9,6 @@ vite.config.ts.*
 !.env.example
 *.tsbuildinfo
 .vercel
+
+*.booker-backup
+*.dump

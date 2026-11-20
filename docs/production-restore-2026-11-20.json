@@ -1,0 +1,33 @@
+{
+  "verifiedAt": "2026-11-20T16:11:59.941Z",
+  "source": "Neon production branch br-mute-butterfly-b9gp09c3",
+  "target": "Independent empty PostgreSQL 18.7 instance",
+  "backup": {
+    "createdAt": "2026-11-20T16:07:57.668Z",
+    "tables": 14,
+    "sha256": "b2ce823f24280db81b35258018cf4310c8d8b65f0540434a25c2bfa54571599b",
+    "encrypted": true,
+    "libraryFileId": "libfile_2fb3d304110c8191a044ff38c28c691c",
+    "keyLocation": "Vercel encrypted production BACKUP_ENCRYPTION_KEY setting; retain a separate private copy"
+  },
+  "restore": {
+    "restored": true,
+    "tables": 14,
+    "contentsMatch": true,
+    "overlapConstraint": true,
+    "sessionsRestored": false
+  },
+  "application": {
+    "operationalMigrationAppliedToRestoredCopy": true,
+    "health": 200,
+    "anonymousAccount": 401,
+    "isolatedRegistration": 201,
+    "isolatedSessionRead": 200
+  },
+  "sourceRecords": {
+    "appointments": 0,
+    "providers": 0,
+    "users": 1
+  },
+  "productionRecordsWritten": false
+}
