@@ -1,137 +1,168 @@
-import { useAuth } from "@/hooks/useAuth";
-import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
-import type { Appointment, Provider } from "@shared/schema";
 import { useState } from "react";
-import Navigation from "@/components/navigation";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth } from "date-fns";
-
+import {
+  addDays,
+  addMonths,
+  startOfWeek,
+  startOfMonth,
+  format,
+  isSameMonth,
+  endOfMonth,
+  differenceInCalendarDays,
+} from "date-fns";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import type { Appointment } from "@shared/schema";
+import { useAppointments, useServices } from "@/hooks/useWorkspace";
+import {
+  PageHeader,
+  LinkButton,
+  LoadingState,
+  ErrorState,
+} from "@/components/product-ui";
+import { AppointmentDetails } from "@/components/appointment-details";
+import { AppointmentTable } from "@/components/appointment-table";
+import { localDate, todayKey } from "@/lib/booking-utils";
 export default function Calendar() {
-  const { providerId } = useAuth();
-  const { data: stored = [], error } = useQuery<Appointment[]>({ queryKey: [providerId ? `/api/providers/${providerId}/appointments` : "/api/appointments/my"] });
-  const { data: providers = [] } = useQuery<Provider[]>({ queryKey: ["/api/providers"] });
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
-  const appointments = stored.filter(appointment => appointment.status !== "cancelled").map(appointment => ({
-    id: appointment.id, date: appointment.appointmentDate,
-    title: providerId ? appointment.clientName : `Appointment #${appointment.id}`,
-    time: `${appointment.startTime} – ${appointment.endTime}`,
-    provider: providers.find(provider => provider.id === appointment.providerId)?.name ?? `Provider #${appointment.providerId}`,
-  }));
-
-  const getAppointmentsForDate = (date: Date) => {
-    const dateStr = format(date, "yyyy-MM-dd");
-    return appointments.filter(a => a.date === dateStr);
-  };
-
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
-  };
-
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
-  };
-
+  const [month, setMonth] = useState(startOfMonth(localDate(todayKey())));
+  const [view, setView] = useState("Month");
+  const [selected, setSelected] = useState<Appointment | null>(null);
+  const query = useAppointments();
+  const { data: services = [] } = useServices();
+  const start = startOfWeek(month, { weekStartsOn: 1 });
+  const count =
+    Math.ceil((differenceInCalendarDays(endOfMonth(month), start) + 1) / 7) * 7;
+  const records = query.data ?? [];
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h1 className="text-4xl font-bold text-slate-800 mb-8">My Calendar</h1>
-        {error && <p role="alert" className="mb-4 text-red-700">Unable to load appointments. Please retry.</p>}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Calendar */}
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg p-8">
-            {/* Calendar Header */}
-            <div className="flex items-center justify-between mb-6">
-              <button onClick={handlePrevMonth} className="p-2 hover:bg-slate-100 rounded-lg">
-                <i className="fas fa-chevron-left text-primary"></i>
-              </button>
-              <h2 className="text-2xl font-bold text-slate-800">{format(currentDate, "MMMM yyyy")}</h2>
-              <button onClick={handleNextMonth} className="p-2 hover:bg-slate-100 rounded-lg">
-                <i className="fas fa-chevron-right text-primary"></i>
-              </button>
-            </div>
-
-            {/* Day Names */}
-            <div className="grid grid-cols-7 gap-2 mb-4">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
-                <div key={day} className="text-center font-bold text-slate-600 text-sm py-2">
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Days Grid */}
-            <div className="grid grid-cols-7 gap-2">
-              {Array.from({ length: monthStart.getDay() }, (_, index) => <span key={`empty-${index}`} />)}
-              {daysInMonth.map((day, idx) => {
-                const isCurrentMonth = isSameMonth(day, currentDate);
-                const dayAppts = getAppointmentsForDate(day);
-                const isSelected = selectedDate && format(selectedDate, "yyyy-MM-dd") === format(day, "yyyy-MM-dd");
-
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedDate(day)}
-                    className={`p-2 rounded-lg text-sm font-medium transition-colors ${
-                      !isCurrentMonth
-                        ? "text-slate-300 bg-slate-50"
-                        : isSelected
-                        ? "bg-primary text-white"
-                        : dayAppts.length > 0
-                        ? "bg-blue-50 text-primary border-2 border-primary"
-                        : "bg-slate-50 text-slate-800 hover:bg-slate-100"
-                    }`}
-                  >
-                    <div>{format(day, "d")}</div>
-                    {dayAppts.length > 0 && <div className="text-xs mt-1">•</div>}
-                  </button>
-                );
-              })}
-            </div>
+    <>
+      <PageHeader
+        eyebrow="Make space for your day"
+        title="Calendar"
+        description="See what's ahead. Open an appointment to view details or change its time."
+        actions={
+          <LinkButton href="/new-appointment">
+            <Plus size={17} />
+            Add appointment
+          </LinkButton>
+        }
+      />
+      <section className="card">
+        <div className="schedule-toolbar">
+          <div className="inline">
+            <button
+              className="icon-button"
+              aria-label="Previous month"
+              onClick={() => setMonth(addMonths(month, -1))}
+            >
+              <ChevronLeft size={19} />
+            </button>
+            <h2>{format(month, "MMMM yyyy")}</h2>
+            <button
+              className="icon-button"
+              aria-label="Next month"
+              onClick={() => setMonth(addMonths(month, 1))}
+            >
+              <ChevronRight size={19} />
+            </button>
+            <button
+              className="btn btn-secondary btn-small"
+              onClick={() => setMonth(startOfMonth(localDate(todayKey())))}
+            >
+              Today
+            </button>
           </div>
-
-          {/* Upcoming Events */}
-          <div className="bg-white rounded-2xl shadow-lg p-8">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">
-              {selectedDate ? format(selectedDate, "MMMM d, yyyy") : "Upcoming Appointments"}
-            </h3>
-
-            <div className="space-y-4">
-              {selectedDate && getAppointmentsForDate(selectedDate).length === 0 ? (
-                <p className="text-slate-600 text-sm">No appointments scheduled for this date</p>
-              ) : (
-                (selectedDate ? getAppointmentsForDate(selectedDate) : appointments).map((appt, idx) => (
-                  <div key={idx} className="border border-slate-200 rounded-lg p-4 hover:border-primary transition-colors">
-                    <p className="font-bold text-slate-800">{appt.title}</p>
-                    <p className="text-sm text-slate-600 mt-1">
-                      <i className="fas fa-clock mr-2"></i>{appt.time}
-                    </p>
-                    <p className="text-sm text-slate-600">
-                      <i className="fas fa-user-md mr-2"></i>{appt.provider}
-                    </p>
-                    <Link href={`/confirmation/${appt.id}`} className="mt-3 block w-full px-3 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition-colors text-sm font-medium">
-                      View Details
-                    </Link>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* New Appointment Button */}
-            <Link href={providerId ? "/new-appointment" : "/find"} className="block text-center w-full mt-6 bg-gradient-to-r from-primary to-blue-600 text-white py-3 rounded-lg hover:shadow-lg transition-shadow font-semibold">
-              <i className="fas fa-plus mr-2"></i>New Appointment
-            </Link>
+          <div className="segmented">
+            {["Month", "Agenda"].map((v) => (
+              <button
+                key={v}
+                className={view === v ? "active" : ""}
+                aria-pressed={view === v}
+                onClick={() => setView(v)}
+              >
+                {v}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
-    </div>
+        {query.isLoading ? (
+          <LoadingState />
+        ) : query.isError ? (
+          <ErrorState retry={() => query.refetch()} />
+        ) : view === "Agenda" ? (
+          <AppointmentTable
+            appointments={records
+              .filter((a) =>
+                a.appointmentDate.startsWith(format(month, "yyyy-MM")),
+              )
+              .sort((a, b) =>
+                (a.appointmentDate + a.startTime).localeCompare(
+                  b.appointmentDate + b.startTime,
+                ),
+              )}
+            services={services}
+            onSelect={setSelected}
+          />
+        ) : (
+          <div className="month-grid">
+            {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+              <div className="month-label" key={d}>
+                {d}
+              </div>
+            ))}
+            {Array.from({ length: count }, (_, i) => addDays(start, i)).map(
+              (d) => {
+                const date = format(d, "yyyy-MM-dd");
+                const list = records
+                  .filter((a) => a.appointmentDate === date)
+                  .sort((a, b) => a.startTime.localeCompare(b.startTime));
+                return (
+                  <div
+                    key={date}
+                    className={
+                      "month-cell " +
+                      (!isSameMonth(d, month) ? "off-month" : "")
+                    }
+                  >
+                    <span
+                      className={
+                        "month-day " + (date === todayKey() ? "today" : "")
+                      }
+                    >
+                      {format(d, "d")}
+                    </span>
+                    {list.map((a) => (
+                      <button
+                        key={a.id}
+                        className={"month-event " + a.status}
+                        aria-label={
+                          a.startTime + " " + a.clientName + " " + a.status
+                        }
+                        onClick={() => setSelected(a)}
+                      >
+                        {a.startTime} · {a.clientName}
+                      </button>
+                    ))}
+                  </div>
+                );
+              },
+            )}
+          </div>
+        )}
+        <div className="calendar-legend">
+          <span>
+            <i />
+            Appointments · Malawi time (CAT)
+          </span>
+          <span>
+            <i style={{ background: "#dfa6a6" }} />
+            Cancelled
+          </span>
+        </div>
+      </section>
+      {selected && (
+        <AppointmentDetails
+          appointment={selected}
+          close={() => setSelected(null)}
+        />
+      )}
+    </>
   );
 }

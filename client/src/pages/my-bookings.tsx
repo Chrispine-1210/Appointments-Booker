@@ -1,92 +1,143 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "wouter";
-import Navigation from "@/components/navigation";
-import { format } from "date-fns";
-import type { Appointment, Provider, Service } from "@shared/schema";
-
+import { useQuery } from "@tanstack/react-query";
+import { CalendarDays, CalendarPlus, Search } from "lucide-react";
+import type { Appointment, Provider } from "@shared/schema";
+import { useAppointments } from "@/hooks/useWorkspace";
+import {
+  PageHeader,
+  StatusBadge,
+  Avatar,
+  EmptyState,
+  LoadingState,
+  ErrorState,
+} from "@/components/product-ui";
+import { AppointmentDetails } from "@/components/appointment-details";
+import { prettyDate, downloadCalendar, todayKey } from "@/lib/booking-utils";
 export default function MyBookings() {
-  const { data: appointments = [], isLoading } = useQuery<Appointment[]>({
-    queryKey: ["/api/appointments/my"],
+  const query = useAppointments();
+  const { data: providers = [] } = useQuery<Provider[]>({
+    queryKey: ["/api/providers"],
   });
-
+  const [filter, setFilter] = useState("Upcoming");
+  const [selected, setSelected] = useState<Appointment | null>(null);
+  const all = query.data ?? [];
+  const list = all
+    .filter(
+      (a) =>
+        filter === "All" ||
+        (filter === "Upcoming" &&
+          a.appointmentDate >= todayKey() &&
+          !["cancelled", "completed"].includes(a.status)) ||
+        (filter === "Past" &&
+          (a.appointmentDate < todayKey() ||
+            ["cancelled", "completed"].includes(a.status))),
+    )
+    .sort((a, b) =>
+      (a.appointmentDate + a.startTime).localeCompare(
+        b.appointmentDate + b.startTime,
+      ),
+    );
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">My Appointments</h1>
-          <p className="text-slate-600">View your bookings and appointment details</p>
-        </div>
-
-        {isLoading ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-slate-600">Loading your bookings...</p>
-          </div>
-        ) : appointments.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <i className="fas fa-calendar-alt text-5xl text-slate-300 mb-4"></i>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">No Bookings Yet</h2>
-            <p className="text-slate-600 mb-6">You haven't booked any appointments yet. Start by finding a professional!</p>
-            <Link href="/find">
-              <button className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-secondary transition-colors">
-                Browse Professionals
-              </button>
-            </Link>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6">
-            {appointments.map((appointment) => (
-              <div key={appointment.id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-12 h-12 bg-primary bg-opacity-10 rounded-full flex items-center justify-center">
-                        <i className="fas fa-calendar-check text-primary"></i>
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-slate-800">Appointment #{appointment.id}</h3>
-                        <p className="text-sm text-slate-600">{appointment.clientName}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-4 text-sm">
-                      <div>
-                        <p className="text-slate-500">Date</p>
-                        <p className="font-semibold text-slate-800">{format(new Date(appointment.appointmentDate), 'MMM dd, yyyy')}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Time</p>
-                        <p className="font-semibold text-slate-800">{appointment.startTime} - {appointment.endTime}</p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Status</p>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold capitalize ${
-                          appointment.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                          appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                          appointment.status === 'completed' ? 'bg-blue-100 text-blue-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {appointment.status}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Email</p>
-                        <p className="font-semibold text-slate-800 text-xs">{appointment.clientEmail}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-2">
-                    <Link href={`/confirmation/${appointment.id}`} className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 font-medium">View details</Link>
+    <>
+      <PageHeader
+        eyebrow="A little more organised"
+        title="My appointments"
+        description="Your next appointment and the ones behind you, all in one place."
+        actions={
+          <Link href="/find" className="btn btn-primary">
+            <Search size={16} />
+            Find a professional
+          </Link>
+        }
+      />
+      <div className="segmented" style={{ marginBottom: 24 }}>
+        {["Upcoming", "Past", "All"].map((f) => (
+          <button
+            key={f}
+            className={filter === f ? "active" : ""}
+            aria-pressed={filter === f}
+            onClick={() => setFilter(f)}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+      {query.isLoading ? (
+        <LoadingState />
+      ) : query.isError ? (
+        <ErrorState retry={() => query.refetch()} />
+      ) : !list.length ? (
+        <section className="card">
+          <EmptyState
+            title="Nothing on this page just yet."
+            description="Find a professional and choose your next appointment, or check your other bookings."
+            action={
+              <Link href="/find" className="btn btn-primary">
+                Explore professionals
+              </Link>
+            }
+          />
+        </section>
+      ) : (
+        <div className="stack">
+          {list.map((a) => (
+            <article className="card card-body" key={a.id}>
+              <div className="spread">
+                <div className="inline">
+                  <Avatar
+                    name={
+                      providers.find((p) => p.id === a.providerId)?.name ??
+                      a.clientName
+                    }
+                  />
+                  <div>
+                    <h2 style={{ margin: 0 }}>
+                      {providers.find((p) => p.id === a.providerId)?.name ??
+                        "Your appointment"}
+                    </h2>
+                    <p className="small muted" style={{ margin: "5px 0 0" }}>
+                      Booking #{String(a.id).padStart(5, "0")}
+                    </p>
                   </div>
                 </div>
+                <StatusBadge status={a.status} />
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+              <div
+                className="spread section-space"
+                style={{ flexWrap: "wrap" }}
+              >
+                <div className="inline small muted">
+                  <CalendarDays size={18} />
+                  {prettyDate(a.appointmentDate)} · {a.startTime} – {a.endTime}{" "}
+                  CAT
+                </div>
+                <div className="inline">
+                  <button
+                    className="btn btn-secondary btn-small"
+                    onClick={() => downloadCalendar(a)}
+                  >
+                    <CalendarPlus size={15} />
+                    Add to calendar
+                  </button>
+                  <button
+                    className="btn btn-primary btn-small"
+                    onClick={() => setSelected(a)}
+                  >
+                    View & manage
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {selected && (
+        <AppointmentDetails
+          appointment={selected}
+          close={() => setSelected(null)}
+        />
+      )}
+    </>
   );
 }

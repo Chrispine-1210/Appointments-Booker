@@ -1,83 +1,84 @@
+import { useParams, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useParams } from "wouter";
-import Navigation from "@/components/navigation";
-import type { Review } from "@shared/schema";
-
+import { Star } from "lucide-react";
+import type { Review, Provider } from "@shared/schema";
+import {
+  Avatar,
+  PageHeader,
+  EmptyState,
+  LoadingState,
+  ErrorState,
+} from "@/components/product-ui";
 export default function Reviews() {
   const { providerId } = useParams<{ providerId: string }>();
-  
-  const { data: reviews = [], isLoading } = useQuery<Review[]>({
+  const query = useQuery<Review[]>({
     queryKey: [`/api/providers/${providerId}/reviews`],
   });
-
-  const averageRating = reviews.length > 0 
-    ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
-    : "0.0";
-
-  const renderStars = (rating: number) => {
-    return [...Array(5)].map((_, i) => (
-      <i key={i} className={`fas fa-star ${i < rating ? 'text-yellow-400' : 'text-slate-300'}`}></i>
-    ));
-  };
-
+  const provider = useQuery<Provider>({
+    queryKey: [`/api/providers/${providerId}`],
+  });
+  const reviews = query.data ?? [];
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">Reviews & Ratings</h1>
-          <p className="text-slate-600">See what clients say about this professional</p>
-        </div>
-
-        {/* Rating Summary */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-          <div className="text-center">
-            <div className="text-5xl font-bold text-slate-800 mb-2">{averageRating}</div>
-            <div className="flex justify-center gap-1 mb-4">
-              {renderStars(Math.round(parseFloat(averageRating)))}
-            </div>
-            <p className="text-slate-600">Based on {reviews.length} review{reviews.length !== 1 ? 's' : ''}</p>
-          </div>
-        </div>
-
-        {/* Reviews List */}
-        {isLoading ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-slate-600">Loading reviews...</p>
-          </div>
-        ) : reviews.length === 0 ? (
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <i className="fas fa-star text-5xl text-slate-300 mb-4"></i>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">No Reviews Yet</h2>
-            <p className="text-slate-600">Be the first to leave a review for this professional!</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {reviews.map((review) => (
-              <div key={review.id} className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="font-bold text-slate-800">{review.clientName}</p>
-                    <p className="text-sm text-slate-500">Verified Client</p>
-                  </div>
-                  <div className="flex gap-1">
-                    {renderStars(review.rating)}
-                  </div>
+    <div className="public-container public-page prose-page">
+      <PageHeader
+        eyebrow={provider.data?.name ?? "Professional profile"}
+        title="Published reviews"
+        description="Feedback currently stored for this professional."
+        actions={
+          <Link href={"/book/" + providerId} className="btn btn-secondary">
+            View booking page
+          </Link>
+        }
+      />
+      {query.isLoading ? (
+        <LoadingState />
+      ) : query.isError ? (
+        <ErrorState retry={() => query.refetch()} />
+      ) : !reviews.length ? (
+        <section className="card">
+          <EmptyState
+            icon={Star}
+            title="A fresh page for feedback."
+            description="No reviews are published for this professional. Review submission is not currently available."
+          />
+        </section>
+      ) : (
+        <div className="stack">
+          {reviews.map((r) => (
+            <article key={r.id} className="card card-body">
+              <div className="spread">
+                <div className="inline">
+                  <Avatar name={r.clientName} />
+                  <strong>{r.clientName}</strong>
                 </div>
-                {review.comment && (
-                  <p className="text-slate-700 mb-4">{review.comment}</p>
-                )}
-                <p className="text-xs text-slate-500">
-                  <i className="fas fa-calendar-alt mr-1"></i>
-                  Service Date: {new Date().toLocaleDateString()}
-                </p>
+                <span
+                  aria-label={r.rating + " out of 5 stars"}
+                  className="inline"
+                >
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <Star
+                      key={i}
+                      size={15}
+                      fill={i < r.rating ? "#e7c77d" : "none"}
+                      color="#c3a86d"
+                    />
+                  ))}
+                </span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              {r.comment && (
+                <p className="small muted section-space">{r.comment}</p>
+              )}
+              <time className="small muted">
+                {r.createdAt
+                  ? new Date(r.createdAt).toLocaleDateString("en-GB", {
+                      timeZone: "Africa/Blantyre",
+                    })
+                  : ""}
+              </time>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,101 +1,92 @@
 import { useState } from "react";
-import Navigation from "@/components/navigation";
-
+import { Link } from "wouter";
+import { Search } from "lucide-react";
+import { PageHeader, EmptyState } from "@/components/product-ui";
+const topics = [
+  {
+    q: "How do I book an appointment?",
+    a: "Open Find a professional, choose a profile, then select a service, working day and available time. Enter your contact details and confirm. You can book as a guest; signing in first also saves the appointment to your account history.",
+  },
+  {
+    q: "Where is my confirmation?",
+    a: "Your confirmation appears on screen immediately after booking. Save or print it, or download the appointment to your calendar. Guest confirmations are private to the browser session used to book. Automatic confirmation emails are not sent.",
+  },
+  {
+    q: "Can I cancel or reschedule?",
+    a: "If you booked while signed in, open My appointments, choose View & manage, then Cancel appointment or Reschedule. Available times are checked again when saving. For guest bookings or past appointments, contact the professional directly. Providers can manage appointments from their workspace.",
+  },
+  {
+    q: "How do I start offering services?",
+    a: "Create an account and select Offer services. Complete your professional profile, choose your working hours and publish your first service. You will receive a booking page to share with clients. An existing personal account can start this from Offer your services in its sidebar.",
+  },
+  {
+    q: "How do I change my hours or prices?",
+    a: "In your professional workspace, open Settings, then Working hours. Add or edit services under Services. Price changes apply to new bookings; existing booking values remain as recorded. Archived services stop accepting new bookings and preserve appointment history.",
+  },
+  {
+    q: "How do payments work?",
+    a: "Prices are displayed in Malawi kwacha (MWK). This application does not process card, mobile money or other payments. Arrange payment directly with the professional. A booking value or pending payment is not evidence that money has been collected.",
+  },
+  {
+    q: "What time zone does my appointment use?",
+    a: "All appointments use Malawi time, Central Africa Time (CAT), UTC+02:00. Your calendar download includes the correct UTC time so calendar applications can display it in your own time zone.",
+  },
+  {
+    q: "What happens if a time is already booked?",
+    a: "That time will no longer appear as available. If another client reserves it while you are booking, the system rejects the overlap. Choose another available time and confirm again.",
+  },
+  {
+    q: "Are email recovery and professional verification available?",
+    a: "Email verification and self-service password recovery are not available yet. Keep your credentials secure. Profiles are self-published and do not prove professional qualifications; confirm those directly with the professional.",
+  },
+];
 export default function Help() {
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-
-  const faqs = [
-    {
-      id: 1,
-      question: "How do I book an appointment?",
-      answer: "Visit the 'Find Providers' page, search for a professional, click their profile, and use the booking form to select your preferred date and time. You'll receive a confirmation email immediately."
-    },
-    {
-      id: 2,
-      question: "Can I cancel or reschedule my appointment?",
-      answer: "Yes! Go to 'My Bookings' and click the 'Cancel' or 'Edit' button on your appointment. Cancellations must be made at least 24 hours before your appointment."
-    },
-    {
-      id: 3,
-      question: "How do I get my confirmation?",
-      answer: "A confirmation email will be sent to the email address you provided during booking. You can also find your confirmation in 'My Bookings' anytime."
-    },
-    {
-      id: 4,
-      question: "What payment methods are accepted?",
-      answer: "BookingPro accepts all major credit cards, debit cards, and digital wallets. Payment processing is secure and encrypted."
-    },
-    {
-      id: 5,
-      question: "Can I leave a review after my appointment?",
-      answer: "Yes! After your appointment is completed, you'll receive an email with a link to leave a review. You can also access reviews from the provider's profile page."
-    },
-    {
-      id: 6,
-      question: "How do professionals set their availability?",
-      answer: "Professionals can manage their working hours, days off, and available time slots from the Settings page under 'Working Hours'."
-    },
-    {
-      id: 7,
-      question: "Is my personal information secure?",
-      answer: "Yes! BookingPro uses industry-standard encryption to protect all personal and payment information. We comply with GDPR and other privacy regulations."
-    },
-    {
-      id: 8,
-      question: "How do I contact support?",
-      answer: "You can reach our support team through the Contact page or email us at support@bookingpro.com. We typically respond within 24 hours."
-    },
-  ];
-
+  const [search, setSearch] = useState("");
+  const list = topics.filter((t) =>
+    (t.q + " " + t.a).toLowerCase().includes(search.toLowerCase()),
+  );
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">Help & FAQ</h1>
-          <p className="text-slate-600">Find answers to common questions</p>
-        </div>
-
-        {/* Search */}
-        <div className="mb-8">
-          <input
-            type="text"
-            placeholder="Search help topics..."
-            className="w-full px-6 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-            data-testid="input-search-help"
+    <div className="public-container public-page prose-page">
+      <PageHeader
+        eyebrow="A little guidance"
+        title="How can we help?"
+        description="Straightforward answers for booking and managing your working day."
+      />
+      <div
+        className="search-wrap"
+        style={{ maxWidth: "none", marginBottom: 30 }}
+      >
+        <Search size={17} />
+        <input
+          className="search-field"
+          aria-label="Search help topics"
+          placeholder="Search booking, services, availability…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+      <section className="card help-list">
+        {list.length ? (
+          list.map((t) => (
+            <details key={t.q}>
+              <summary>{t.q}</summary>
+              <p>{t.a}</p>
+            </details>
+          ))
+        ) : (
+          <EmptyState
+            icon={Search}
+            title="No matching topics"
+            description="Try a shorter phrase or a different search."
           />
-        </div>
-
-        {/* FAQs */}
-        <div className="space-y-4">
-          {faqs.map((faq) => (
-            <div key={faq.id} className="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow">
-              <button
-                onClick={() => setExpandedId(expandedId === faq.id ? null : faq.id)}
-                className="w-full px-6 py-4 text-left flex items-center justify-between hover:bg-slate-50 transition-colors"
-              >
-                <h3 className="font-bold text-slate-800">{faq.question}</h3>
-                <i className={`fas fa-chevron-down text-primary transition-transform ${expandedId === faq.id ? 'rotate-180' : ''}`}></i>
-              </button>
-              {expandedId === faq.id && (
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-200">
-                  <p className="text-slate-700">{faq.answer}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Contact Support */}
-        <div className="mt-12 bg-blue-50 border border-blue-200 rounded-2xl p-8 text-center">
-          <i className="fas fa-headset text-4xl text-blue-600 mb-4"></i>
-          <h2 className="text-2xl font-bold text-blue-900 mb-2">Still need help?</h2>
-          <p className="text-blue-700 mb-6">Can't find what you're looking for? Our support team is here to help!</p>
-          <a href="mailto:support@bookingpro.com" className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
-            Contact Support
-          </a>
-        </div>
+        )}
+      </section>
+      <div className="notice section-space">
+        <strong>Need to discuss an appointment?</strong> Your professional's
+        contact details are on their booking page.{" "}
+        <Link className="text-link" href="/contact">
+          Find the right contact
+        </Link>
       </div>
     </div>
   );

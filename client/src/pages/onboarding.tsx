@@ -1,40 +1,275 @@
-import { type FormEvent } from "react";
-import { useLocation, Redirect } from "wouter";
+import { useState, type FormEvent } from "react";
+import { useLocation, Redirect, Link } from "wouter";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Check, CalendarDays, BriefcaseBusiness } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
-import Navigation from "@/components/navigation";
-
+import { PageHeader, Field } from "@/components/product-ui";
 export default function Onboarding() {
   const { user } = useAuth();
   const [, navigate] = useLocation();
-  const queryClient = useQueryClient();
+  const client = useQueryClient();
+  const [step, setStep] = useState(0);
+  const [error, setError] = useState("");
   const submit = useMutation({
     mutationFn: async (form: FormData) => {
-      const profile = { name: String(form.get("name")), specialty: String(form.get("specialty")), email: String(form.get("email")), phone: String(form.get("phone")),
-        workingHours: { start: String(form.get("start")), end: String(form.get("end")), days: form.getAll("days").map(Number) } };
-      const service = { name: String(form.get("serviceName")), duration: Number(form.get("duration")), price: String(form.get("price")) };
-      return (await apiRequest("POST", "/api/providers/onboard", { profile, service })).json();
+      const profile = {
+        name: String(form.get("name")),
+        title: String(form.get("title")),
+        specialty: String(form.get("specialty")),
+        email: String(form.get("email")),
+        phone: String(form.get("phone")),
+        bio: String(form.get("bio")),
+        workingHours: {
+          start: String(form.get("start")),
+          end: String(form.get("end")),
+          days: form.getAll("days").map(Number),
+        },
+      };
+      const service = {
+        name: String(form.get("serviceName")),
+        description: String(form.get("serviceDescription")),
+        duration: Number(form.get("duration")),
+        price: String(form.get("price")),
+      };
+      return (
+        await apiRequest("POST", "/api/providers/onboard", { profile, service })
+      ).json();
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] }); await queryClient.invalidateQueries({ queryKey: ["/api/providers"] }); navigate("/dashboard"); },
+    onSuccess: async () => {
+      await client.invalidateQueries();
+      navigate("/dashboard");
+    },
   });
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); submit.mutate(new FormData(event.currentTarget)); };
   if (user?.providerId) return <Redirect to="/dashboard" />;
-  const input = "mt-1 w-full rounded-lg border border-slate-300 bg-white p-3";
-  return <div className="min-h-screen bg-slate-50"><Navigation /><main className="mx-auto max-w-2xl px-5 py-10">
-    <h1 className="text-3xl font-bold text-slate-900">Set up your booking page</h1><p className="mt-3 mb-7 text-slate-600">Add your professional details, opening hours and first service. Times use Malawi local time.</p>
-    <form onSubmit={onSubmit} className="space-y-7 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <fieldset className="space-y-4"><legend className="mb-3 text-lg font-semibold">Professional profile</legend>
-        <label className="block text-sm font-medium">Public name<input name="name" required maxLength={200} defaultValue={`${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim()} className={input} /></label>
-        <label className="block text-sm font-medium">Specialty<input name="specialty" required maxLength={200} placeholder="e.g. Business consulting" className={input} /></label>
-        <div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm font-medium">Public email<input name="email" type="email" required maxLength={320} defaultValue={user?.email ?? ""} className={input} /></label><label className="block text-sm font-medium">Phone<input name="phone" type="tel" required maxLength={40} className={input} /></label></div>
-      </fieldset>
-      <fieldset><legend className="mb-3 text-lg font-semibold">Opening hours</legend><div className="grid grid-cols-2 gap-4"><label className="text-sm font-medium">Opens<input name="start" type="time" required defaultValue="09:00" className={input} /></label><label className="text-sm font-medium">Closes<input name="end" type="time" required defaultValue="17:00" className={input} /></label></div>
-        <div className="mt-4 flex flex-wrap gap-4">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, index) => <label key={day} className="flex items-center gap-2 text-sm"><input name="days" type="checkbox" value={index} defaultChecked={index > 0 && index < 6} />{day}</label>)}</div>
-      </fieldset>
-      <fieldset className="space-y-4"><legend className="mb-3 text-lg font-semibold">First bookable service</legend><label className="block text-sm font-medium">Service name<input name="serviceName" required maxLength={200} placeholder="Initial consultation" className={input} /></label><div className="grid grid-cols-2 gap-4"><label className="text-sm font-medium">Duration (minutes)<input name="duration" type="number" min={1} max={720} required defaultValue={30} className={input} /></label><label className="text-sm font-medium">Price (MWK)<input name="price" type="number" min={0} max={99999999.99} step="0.01" required className={input} /></label></div></fieldset>
-      {submit.error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{submit.error.message}</p>}
-      <button disabled={submit.isPending} className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-white disabled:opacity-50">{submit.isPending ? "Saving your page…" : "Create booking page"}</button>
-    </form>
-  </main></div>;
+  const advance = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    if (step === 1) {
+      const data = new FormData(form);
+      if (
+        !data.getAll("days").length ||
+        String(data.get("start")) >= String(data.get("end"))
+      ) {
+        setError(
+          "Choose at least one working day and a closing time after opening time.",
+        );
+        return;
+      }
+    }
+    setError("");
+    if (step < 2) setStep(step + 1);
+    else submit.mutate(new FormData(form));
+  };
+  return (
+    <div className="public-container public-page onboarding-page">
+      <PageHeader
+        eyebrow="Make it yours"
+        title="Your next chapter, booked."
+        description="Set up your public profile, working hours and first service. You can change these later in your workspace."
+      />
+      <div className="onboarding-steps">
+        {["Your profile", "Working hours", "Your first service"].map((s, i) => (
+          <span className={i === step ? "active" : ""} key={s}>
+            {i < step ? "✓ " : ""}
+            {s}
+          </span>
+        ))}
+      </div>
+      <form onSubmit={advance} className="card">
+        <div className="card-body form-stack">
+          <div hidden={step !== 0}>
+            <h2 className="inline">
+              <BriefcaseBusiness size={20} />
+              Introduce your business
+            </h2>
+            <div className="form-stack section-space">
+              <div className="form-grid">
+                <Field label="Title (optional)">
+                  <input
+                    name="title"
+                    maxLength={30}
+                    placeholder="e.g. Dr., Ms., Mr."
+                  />
+                </Field>
+                <Field label="Public name">
+                  <input
+                    name="name"
+                    required={step === 0}
+                    maxLength={200}
+                    defaultValue={(
+                      (user?.firstName ?? "") +
+                      " " +
+                      (user?.lastName ?? "")
+                    ).trim()}
+                  />
+                </Field>
+              </div>
+              <Field label="Specialty">
+                <input
+                  name="specialty"
+                  required={step === 0}
+                  maxLength={200}
+                  placeholder="e.g. Business consulting"
+                />
+              </Field>
+              <div className="form-grid">
+                <Field label="Public email">
+                  <input
+                    name="email"
+                    type="email"
+                    required={step === 0}
+                    defaultValue={user?.email ?? ""}
+                  />
+                </Field>
+                <Field label="Public phone">
+                  <input
+                    name="phone"
+                    type="tel"
+                    required={step === 0}
+                    maxLength={40}
+                    placeholder="+265…"
+                  />
+                </Field>
+              </div>
+              <Field label="About your practice (optional)">
+                <textarea
+                  name="bio"
+                  maxLength={3000}
+                  placeholder="Tell clients what you do and how you can help."
+                />
+              </Field>
+            </div>
+          </div>
+          <div hidden={step !== 1}>
+            <h2 className="inline">
+              <CalendarDays size={20} />
+              Make your availability clear
+            </h2>
+            <p className="small muted">
+              All times use Malawi time (CAT, UTC+02:00).
+            </p>
+            <div className="form-grid section-space">
+              <Field label="Opening time">
+                <input
+                  name="start"
+                  type="time"
+                  defaultValue="09:00"
+                  required={step === 1}
+                />
+              </Field>
+              <Field label="Closing time">
+                <input
+                  name="end"
+                  type="time"
+                  defaultValue="17:00"
+                  required={step === 1}
+                />
+              </Field>
+            </div>
+            <p className="field section-space">Working days</p>
+            <div className="day-picker">
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                (day, i) => (
+                  <label key={day}>
+                    <input
+                      type="checkbox"
+                      name="days"
+                      value={i}
+                      defaultChecked={i > 0 && i < 6}
+                    />
+                    <span>{day}</span>
+                  </label>
+                ),
+              )}
+            </div>
+            <p className="notice section-space">
+              Only times within these hours are offered to clients. Existing
+              appointments automatically block overlapping times.
+            </p>
+          </div>
+          <div hidden={step !== 2}>
+            <h2>Your first bookable service</h2>
+            <p className="small muted">
+              Help clients know what to expect. Prices are shown in Malawi
+              kwacha.
+            </p>
+            <div className="form-stack section-space">
+              <Field label="Service name">
+                <input
+                  name="serviceName"
+                  required={step === 2}
+                  maxLength={200}
+                  placeholder="Initial consultation"
+                />
+              </Field>
+              <Field label="Description (optional)">
+                <textarea
+                  name="serviceDescription"
+                  maxLength={2000}
+                  placeholder="What's included in this appointment?"
+                />
+              </Field>
+              <div className="form-grid">
+                <Field label="Duration in minutes">
+                  <input
+                    name="duration"
+                    type="number"
+                    min={1}
+                    max={720}
+                    defaultValue={30}
+                    required={step === 2}
+                  />
+                </Field>
+                <Field label="Price (MWK)">
+                  <input
+                    name="price"
+                    type="number"
+                    min={0}
+                    max={99999999.99}
+                    step="0.01"
+                    required={step === 2}
+                  />
+                </Field>
+              </div>
+            </div>
+          </div>
+          {(error || submit.error) && (
+            <p className="form-error" role="alert">
+              {error || submit.error?.message}
+            </p>
+          )}
+          <div className="spread">
+            <div>
+              {step > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setStep(step - 1)}
+                >
+                  Back
+                </button>
+              ) : (
+                <Link href="/my-bookings" className="text-link">
+                  Set up later
+                </Link>
+              )}
+            </div>
+            <button className="btn btn-primary" disabled={submit.isPending}>
+              {submit.isPending ? (
+                "Creating your page…"
+              ) : step === 2 ? (
+                <>
+                  <Check size={17} />
+                  Create booking page
+                </>
+              ) : (
+                "Continue"
+              )}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
 }

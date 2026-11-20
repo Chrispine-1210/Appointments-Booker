@@ -1,4 +1,6 @@
-# Vercel and Neon configuration — 20 November 2026 (Malawi)
+# Initial Vercel and Neon configuration — 20 November 2026 (Malawi)
+
+This record describes the initial cloud activation. Later interface work and browser checks are documented in [INTERFACE_COMPLETION.md](INTERFACE_COMPLETION.md).
 
 ## Dedicated resources
 

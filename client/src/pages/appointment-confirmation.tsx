@@ -1,151 +1,146 @@
-import { useParams } from "wouter";
+import { useState } from "react";
+import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
-import Navigation from "@/components/navigation";
-import { format } from "date-fns";
-import type { Appointment, Provider } from "@shared/schema";
-
+import { Check, CalendarPlus, Printer } from "lucide-react";
+import type { Appointment, Provider, Service } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
+import { LoadingState, ErrorState, StatusBadge } from "@/components/product-ui";
+import { AppointmentDetails } from "@/components/appointment-details";
+import { downloadCalendar, prettyDate, money } from "@/lib/booking-utils";
 export default function AppointmentConfirmation() {
   const { appointmentId } = useParams<{ appointmentId: string }>();
-  
-  const { data: appointment, isLoading } = useQuery<Appointment>({
+  const { user } = useAuth();
+  const [manage, setManage] = useState(false);
+  const query = useQuery<Appointment>({
     queryKey: [`/api/appointments/${appointmentId}`],
   });
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <Navigation />
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-slate-600">Loading confirmation...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!appointment) {
-    return (
-      <div className="min-h-screen bg-slate-50">
-        <Navigation />
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
-            <i className="fas fa-exclamation-triangle text-5xl text-amber-500 mb-4"></i>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">Appointment Not Found</h2>
-            <p className="text-slate-600 mb-6">We couldn't find the appointment you're looking for.</p>
-            <Link href="/find">
-              <button className="bg-primary text-white px-6 py-3 rounded-lg hover:bg-secondary transition-colors">
-                Go Back
-              </button>
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  const a = query.data;
+  const { data: provider } = useQuery<Provider>({
+    queryKey: [`/api/providers/${a?.providerId}`],
+    enabled: !!a,
+  });
+  const { data: services = [] } = useQuery<Service[]>({
+    queryKey: [`/api/providers/${a?.providerId}/services`],
+    enabled: !!a,
+  });
+  if (query.isLoading) return <LoadingState label="Loading confirmation" />;
+  const service = services.find((s) => s.id === a?.serviceId);
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Success Banner */}
-        <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl shadow-lg p-8 text-white mb-8 text-center">
-          <i className="fas fa-check-circle text-5xl mb-4"></i>
-          <h1 className="text-3xl font-bold mb-2">Appointment Confirmed!</h1>
-          <p className="text-green-100">Your appointment has been saved. Keep these details for your visit.</p>
-        </div>
-
-        {/* Confirmation Details */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-          <h2 className="text-2xl font-bold text-slate-800 mb-6">Booking Details</h2>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-            {/* Date & Time */}
-            <div className="border-l-4 border-primary pl-4">
-              <p className="text-slate-600 text-sm mb-1">Date & Time</p>
-              <p className="font-bold text-slate-800">{format(new Date(appointment.appointmentDate), 'MMMM dd, yyyy')}</p>
-              <p className="font-bold text-slate-800">{appointment.startTime} - {appointment.endTime}</p>
+    <div className="public-container public-page confirmation-layout">
+      {query.isError || !a ? (
+        <ErrorState
+          message="This confirmation is private. Open it in the browser where you booked, or sign in to the account used for the booking."
+          retry={() => query.refetch()}
+        />
+      ) : (
+        <>
+          <header className="confirmation-banner">
+            <span className="confirmation-check">
+              <Check size={30} />
+            </span>
+            <p className="eyebrow">Booking #{String(a.id).padStart(5, "0")}</p>
+            <h1>
+              {a.status === "cancelled"
+                ? "Your appointment was cancelled."
+                : "Your time is reserved."}
+            </h1>
+            <p>Your appointment is saved. Keep these details for your visit.</p>
+          </header>
+          <section className="card card-body">
+            <div className="spread" style={{ marginBottom: 25 }}>
+              <h2 style={{ margin: 0 }}>{service?.name ?? "Appointment"}</h2>
+              <StatusBadge status={a.status} />
             </div>
-
-            {/* Confirmation Number */}
-            <div className="border-l-4 border-primary pl-4">
-              <p className="text-slate-600 text-sm mb-1">Confirmation #</p>
-              <p className="font-bold text-slate-800 text-lg">#{String(appointment.id).padStart(6, '0')}</p>
-            </div>
-
-            {/* Client Name */}
-            <div className="border-l-4 border-primary pl-4">
-              <p className="text-slate-600 text-sm mb-1">Client Name</p>
-              <p className="font-bold text-slate-800">{appointment.clientName}</p>
-            </div>
-
-            {/* Status */}
-            <div className="border-l-4 border-primary pl-4">
-              <p className="text-slate-600 text-sm mb-1">Status</p>
-              <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-green-100 text-green-800 capitalize">
-                {appointment.status}
-              </span>
-            </div>
-
-            {/* Contact Info */}
-            <div className="border-l-4 border-primary pl-4">
-              <p className="text-slate-600 text-sm mb-1">Email</p>
-              <p className="font-bold text-slate-800">{appointment.clientEmail}</p>
-            </div>
-
-            {/* Phone */}
-            <div className="border-l-4 border-primary pl-4">
-              <p className="text-slate-600 text-sm mb-1">Phone</p>
-              <p className="font-bold text-slate-800">{appointment.clientPhone}</p>
-            </div>
-          </div>
-
-          {appointment.notes && (
-            <div className="bg-slate-50 rounded-lg p-4">
-              <p className="text-slate-600 text-sm mb-2">Notes</p>
-              <p className="text-slate-800">{appointment.notes}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Next Steps */}
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-8 mb-8">
-          <h3 className="text-xl font-bold text-blue-900 mb-4">What Happens Next?</h3>
-          <ul className="space-y-3">
-            <li className="flex items-start">
-              <i className="fas fa-check-circle text-blue-600 mr-3 mt-1 flex-shrink-0"></i>
-              <span className="text-blue-900"><strong>Booking details</strong> - Save this page or print it for your records</span>
-            </li>
-            <li className="flex items-start">
-              <i className="fas fa-check-circle text-blue-600 mr-3 mt-1 flex-shrink-0"></i>
-              <span className="text-blue-900"><strong>Reminder</strong> - Add the appointment to your own calendar</span>
-            </li>
-            <li className="flex items-start">
-              <i className="fas fa-check-circle text-blue-600 mr-3 mt-1 flex-shrink-0"></i>
-              <span className="text-blue-900"><strong>Pre-Appointment</strong> - Arrive 5-10 minutes early to check in</span>
-            </li>
-            <li className="flex items-start">
-              <i className="fas fa-check-circle text-blue-600 mr-3 mt-1 flex-shrink-0"></i>
-              <span className="text-blue-900"><strong>Leave a Review</strong> - After your appointment, rate your experience</span>
-            </li>
-          </ul>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Link href="/find" className="flex-1">
-            <button className="w-full bg-primary text-white py-3 rounded-lg hover:bg-secondary transition-colors font-semibold">
-              <i className="fas fa-search mr-2"></i>Book Another Appointment
+            <dl className="detail-grid">
+              <div>
+                <dt>Your professional</dt>
+                <dd>
+                  {provider?.title} {provider?.name ?? "Loading…"}
+                </dd>
+              </div>
+              <div>
+                <dt>Date</dt>
+                <dd>{prettyDate(a.appointmentDate)}</dd>
+              </div>
+              <div>
+                <dt>Time in Malawi (CAT)</dt>
+                <dd>
+                  {a.startTime} – {a.endTime}
+                </dd>
+              </div>
+              <div>
+                <dt>Booking value</dt>
+                <dd>
+                  {money(a.paymentAmount)} · Payment{" "}
+                  {a.paymentStatus === "completed" ? "recorded" : "pending"}
+                </dd>
+              </div>
+              <div>
+                <dt>Client</dt>
+                <dd>{a.clientName}</dd>
+              </div>
+              <div>
+                <dt>Professional's contact</dt>
+                <dd>
+                  {provider && (
+                    <a href={"mailto:" + provider.email}>{provider.email}</a>
+                  )}
+                </dd>
+              </div>
+            </dl>
+            {a.notes && <p className="notice section-space">{a.notes}</p>}
+          </section>
+          <div className="confirmation-actions">
+            <button
+              className="btn btn-primary"
+              onClick={() => downloadCalendar(a, service?.name, provider?.name)}
+            >
+              <CalendarPlus size={17} />
+              Add to calendar
             </button>
-          </Link>
-          <button onClick={() => window.print()} className="flex-1 border border-slate-300 text-slate-700 py-3 rounded-lg hover:bg-slate-50 transition-colors font-semibold">
-            <i className="fas fa-download mr-2"></i>Print Confirmation
-          </button>
-        </div>
-      </div>
+            <button
+              className="btn btn-secondary"
+              onClick={() => window.print()}
+            >
+              <Printer size={17} />
+              Print details
+            </button>
+            {user &&
+              (a.clientUserId === user.id ||
+                user.providerId === a.providerId) && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setManage(true)}
+                >
+                  Manage appointment
+                </button>
+              )}
+          </div>
+          <div className="notice">
+            <strong>You're all set.</strong> Payment and any special
+            arrangements are handled directly with your professional.{" "}
+            {user
+              ? "Your appointment is also available in your account."
+              : "Guest confirmations stay private to this browser session. Save or print a copy for later."}
+          </div>
+          <div className="inline section-space no-print">
+            <Link className="text-link" href="/find">
+              Book another appointment
+            </Link>
+            {user && (
+              <Link className="text-link" href="/my-bookings">
+                My appointments
+              </Link>
+            )}
+          </div>
+          {manage && (
+            <AppointmentDetails
+              appointment={a}
+              close={() => setManage(false)}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 }
