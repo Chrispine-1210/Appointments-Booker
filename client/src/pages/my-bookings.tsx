@@ -3,7 +3,6 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarDays, CalendarPlus, Search } from "lucide-react";
 import type { Appointment, Provider } from "@shared/schema";
-import { useAppointments } from "@/hooks/useWorkspace";
 import {
   PageHeader,
   StatusBadge,
@@ -13,9 +12,11 @@ import {
   ErrorState,
 } from "@/components/product-ui";
 import { AppointmentDetails } from "@/components/appointment-details";
-import { prettyDate, downloadCalendar, todayKey } from "@/lib/booking-utils";
+import { prettyDate, downloadCalendar } from "@/lib/booking-utils";
 export default function MyBookings() {
-  const query = useAppointments();
+  // Personal bookings stay scoped to the booking creator, including when that
+  // account also owns a professional profile.
+  const query = useQuery<Appointment[]>({ queryKey: ["/api/appointments/my"] });
   const { data: providers = [] } = useQuery<Provider[]>({
     queryKey: ["/api/providers"],
   });
@@ -27,10 +28,12 @@ export default function MyBookings() {
       (a) =>
         filter === "All" ||
         (filter === "Upcoming" &&
-          a.appointmentDate >= todayKey() &&
+          new Date(`${a.appointmentDate}T${a.startTime}:00+02:00`).getTime() >
+            Date.now() &&
           !["cancelled", "completed"].includes(a.status)) ||
         (filter === "Past" &&
-          (a.appointmentDate < todayKey() ||
+          (new Date(`${a.appointmentDate}T${a.startTime}:00+02:00`).getTime() <=
+            Date.now() ||
             ["cancelled", "completed"].includes(a.status))),
     )
     .sort((a, b) =>

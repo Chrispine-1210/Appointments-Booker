@@ -40,6 +40,7 @@ const providerLinks = [
   { href: "/memos", label: "Notes", icon: NotebookPen },
   { href: "/notifications", label: "Activity", icon: Activity },
   { href: "/settings", label: "Settings", icon: Settings2 },
+  { href: "/my-bookings", label: "My own bookings", icon: CalendarCheck2 },
 ];
 const clientLinks = [
   { href: "/my-bookings", label: "My appointments", icon: CalendarDays },

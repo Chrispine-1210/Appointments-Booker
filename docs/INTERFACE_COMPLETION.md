@@ -13,7 +13,7 @@ The public site and private workspace now share a coherent visual system, respon
 | Overview | Stored appointment totals, unique booked client emails, actual recorded collections, completed counts, today's appointments, tasks and calendar |
 | Calendar and appointments | Month/agenda views, searchable/filterable appointment table, details, completion, cancellation and availability-backed rescheduling |
 | Services | Create, edit and archive services; owner checks; existing booking values/history retained |
-| Client workspace | Upcoming/past/all bookings, private details, client-owned future cancellation/rescheduling and contact links |
+| Client workspace | Upcoming/past/all bookings, private details, client-owned future cancellation/rescheduling and contact links; professionals also have a separate personal booking history scoped to the booking creator |
 | Booking and confirmation | Two-step service/date/time/details journey; actual provider working days; fresh availability; future-time validation; stored confirmation, printing and UTC-correct ICS download |
 | Tasks and notes | Search/filter, create/edit/delete confirmation, task completion and priority, due dates, note categories and important notes |
 | Contacts and activity | Actual appointment contacts with email/phone links; a chronological view of saved appointments/tasks with current statuses |
@@ -32,6 +32,8 @@ Fake support contacts, fake message submissions, fabricated social proof, dead f
 - Calendar download checked in the browser: a 10:00 Malawi appointment exports `DTSTART:20261120T080000Z` in a valid VCALENDAR document.
 - Responsive browser check at 454 CSS pixels: mobile navigation drawer and notes navigation pass; document scroll width remains within viewport width.
 - Initial production JavaScript entry is approximately 286 KB, down from 1,075 KB. Pages load in separate route chunks.
+- Hosted PostgreSQL Preview: 20/20 HTTP checks pass against source `66c7efd38045f325c6254511fd8ef94089691d14`, covering registration, provider onboarding, session identity, service creation/editing/archival, booking, rescheduling, cancellation, preserved booking value, cross-account denial and sign-out. Records were created only in the isolated Preview database. [Machine-readable result](interface-review/hosted-api-checks.json).
+- The final personal-history navigation/query correction changes only the frontend. TypeScript and production build were rechecked after that correction; the hosted API result above identifies the backend revision actually exercised.
 
 Private visual checks use `integration/ui-fixture.ts`, a development-only, in-memory server with an injected test identity and fictional data. It refuses a database connection and is not imported into either production bundle. The checked default `dev` script continues to use the real application authentication adapter. `npm run dev:fixture -- --client` selects the client visual-review identity. Browser fixture results do not certify live sign-in; real authentication and database ownership are separately covered by the PostgreSQL integration suite.
 
