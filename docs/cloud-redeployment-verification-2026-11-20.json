@@ -1,0 +1,36 @@
+{
+  "result": "PASS",
+  "sourceSha": "7b69de9414948ac77ba0df2a2d38954b5ce4444a",
+  "previousDeploymentId": "dpl_9gXrVPZyRsk8aYa8xJQPU7tR5Wi8",
+  "redeploymentId": "dpl_8VZMKzw8c1xbz47aLhCHYJTCtdkW",
+  "databaseBranch": "br-orange-band-b9iv8e7e",
+  "existingAccountLogin": true,
+  "existingProviderId": true,
+  "existingAppointmentCount": 1,
+  "checks": [
+    {
+      "path": "/api/auth/login",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/user",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/providers/1/appointments",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/logout",
+      "status": 204,
+      "expected": 204,
+      "pass": true
+    }
+  ]
+}

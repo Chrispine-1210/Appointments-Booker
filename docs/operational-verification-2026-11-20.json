@@ -1,0 +1,34 @@
+{
+  "verifiedAt": "2026-11-20T16:19:08.926722+00:00",
+  "typeScript": "PASS",
+  "productionBuild": "PASS",
+  "regressionTests": {
+    "passed": 24,
+    "failed": 0
+  },
+  "postgresIntegration": {
+    "server": "18.7",
+    "passed": 20,
+    "failed": 0
+  },
+  "productionAudit": {
+    "findings": 0
+  },
+  "externalServiceTests": "Email and gateway mocked; no customer messages or actual charges",
+  "restoreEvidence": "production-restore-2026-11-20.json",
+  "migration": {
+    "name": "0002_operational_workflows",
+    "sha256": "5f8df383b6aebc17ede910de84db19dc17652ad3ba59180d910fbcd12ed079b0",
+    "preview": "APPLIED",
+    "production": "APPLIED"
+  },
+  "newBrowserChecks": {
+    "headlessAttempt": "Blocked by the managed Chromium Unix-socket restriction",
+    "livePublicReview": "Pending final deployment"
+  },
+  "activation": {
+    "email": "Missing verified sender and RESEND_API_KEY",
+    "payments": "Missing authorized merchant credentials and provider binding",
+    "restore": "PASS"
+  }
+}

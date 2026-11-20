@@ -1,0 +1,158 @@
+{
+  "sourceSha": "66c7efd38045f325c6254511fd8ef94089691d14",
+  "deploymentId": "dpl_G6LXsGRq4zwTdS843tC4Lvjh6PXA",
+  "databaseScope": "isolated preview branch",
+  "checks": [
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/providers/onboard",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/user",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/services",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/services/5",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/appointments",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/appointments/3/reschedule",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/appointments/3/cancel",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/services/5",
+      "status": 204,
+      "expected": 204,
+      "pass": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/appointments/3",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "status": 204,
+      "expected": 204,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/user",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/appointments",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/appointments/3",
+      "status": 403,
+      "expected": 403,
+      "pass": true
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/appointments/4/reschedule",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/appointments/4/cancel",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "status": 204,
+      "expected": 204,
+      "pass": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/user",
+      "status": 401,
+      "expected": 401,
+      "pass": true
+    }
+  ],
+  "verifiedDate": "2026-11-20",
+  "result": "PASS",
+  "productionDataMutated": false,
+  "assertions": [
+    "Health reports PostgreSQL storage",
+    "Onboarding assigns the signed-in provider identity",
+    "Archived service preserves the original 12000.50 booking value",
+    "Client booking records the authenticated creator",
+    "Another account receives HTTP 403 for the owner booking",
+    "Signed-out identity receives HTTP 401"
+  ]
+}

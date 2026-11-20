@@ -1,165 +1,80 @@
-# BookingPro - Professional Appointment Scheduling Platform
+# BookingPro / Appointments-Booker
 
-## Overview
+An appointment scheduling application built with React, TypeScript, Express, PostgreSQL and Drizzle.
 
-BookingPro is a comprehensive professional assistant platform that combines appointment scheduling with personal organization tools. The application serves as an all-in-one solution for industry professionals featuring appointment booking, memo management, task tracking, and is installable as a Progressive Web App (PWA). The platform includes Replit Auth authentication, allowing users to sign in/out and access their personalized dashboard with all functionality integrated into one professional assistant interface.
+## Implemented
 
-## User Preferences
+- Email/password registration and login, salted scrypt credentials, session rotation, database-backed session invalidation and shared login throttling.
+- Transactional provider onboarding: professional details, working hours and a first service are saved together.
+- Provider context derived from the authenticated account throughout the dashboard, settings, tasks, memos, booking form and calendar.
+- PostgreSQL persistence for accounts, credentials, sessions, profiles, services, appointments, tasks, memos and reviews.
+- Database-enforced booking intervals, matching services, opening hours and overlap exclusion across independent application processes.
+- Client booking history and session-protected guest confirmations. Collections remain separate from unpaid booking values.
 
-Preferred communication style: Simple, everyday language.
+## Local setup
 
-## Recent Changes (December 2025)
+Use Node.js 22.12 or later and PostgreSQL with the `btree_gist` extension available.
 
-### New Features Added
-- **5 New Core Pages**: My Bookings, Provider Settings, Appointment Confirmation, Reviews, Notifications
-- **7 Complete Pages**: About, Help/FAQ, Contact, Privacy Policy, Terms of Service, Messages, Calendar
-- **Improved 404 Page**: Better error handling with helpful navigation
-- **Enhanced Navigation**: Quick-access buttons for bookings, notifications, settings, and messages
-- **Footer Component**: Complete footer with links, social media, contact info
-- **Total Pages**: 20+ fully functional pages covering entire platform lifecycle
-- **Build Status**: All pages successfully compile, no TypeScript errors
+```sh
+npm ci
+cp .env.example .env
+```
 
-### Complete Feature Set
-- Authentication System (Replit Auth with sign-in/out)
-- Provider Discovery & Search with filtering
-- **Professional Personalization**: Customizable titles/prefixes (Dr., Prof., etc.)
-- **Social Integration**: Linktree-style social links (Instagram, Twitter, LinkedIn, Website)
-- **Robust Profiles**: Advanced bio management and personalized dashboard displays
-- Full Appointment Booking Flow with confirmation
-- Professional Analytics Dashboard
-- Personal Assistant (Memos & Tasks)
-- Client Appointment History
-- Provider Profile Management
-- Review & Rating System
-- Notification Center
-- In-App Messaging System
-- Calendar View with event tracking
-- Comprehensive Help Center with FAQ
-- Contact & Support Pages
-- Legal Pages (Privacy, Terms)
-- Responsive Mobile-First Design
-- Progressive Web App (PWA) Installable
+Set `DATABASE_URL` in `.env` to the application database. Set `DATABASE_URL_UNPOOLED` for migrations when the application URL is pooled. Run:
 
-## System Architecture
+```sh
+npm run db:migrate
+npm run dev
+```
 
-### Frontend Architecture
-The client-side application is built with React and TypeScript, utilizing a component-based architecture with the following key design decisions:
+Open `http://localhost:5000/login`, create your account, complete onboarding, then use the dashboard. No preset accounts or passwords are shipped. Public provider discovery is at `/find`; the public booking page is `/book/:providerId`.
 
-- **UI Framework**: Implements shadcn/ui components with Radix UI primitives for accessibility and consistent design
-- **Styling**: Uses Tailwind CSS with a custom design system featuring CSS variables for theming
-- **State Management**: Leverages TanStack Query (React Query) for server state management and data fetching
-- **Routing**: Implements client-side routing with Wouter for lightweight navigation
-- **Form Handling**: Uses React Hook Form with Zod validation for type-safe form management
-- **Build Tool**: Vite for fast development and optimized production builds
-- **Pages**: 20+ fully functional pages covering booking, management, and support flows
-- **Components**: Reusable UI components with consistent styling and behavior
+Without `DATABASE_URL`, development uses explicit, volatile sample storage. Production requires PostgreSQL and never falls back to memory. Empty PostgreSQL databases contain no sample customers or fabricated bookings.
 
-The frontend follows a pages-and-components pattern with reusable UI components and feature-specific components for all user journeys.
+The migrations establish a fresh baseline. An existing database with an untracked schema requires an adoption review before these migrations are applied. The application validates schema readiness at startup and does not run migrations automatically.
 
-### Page Structure
-**Public Pages** (accessible to all users):
-- `/` - Home/Landing page with hero section
-- `/find` - Provider discovery and search
-- `/book/:providerId` - Booking form
-- `/reviews/:providerId` - Review display
-- `/confirmation/:appointmentId` - Booking confirmation
-- `/about` - About BookingPro
-- `/help` - Help & FAQ
-- `/contact` - Contact form
-- `/privacy` - Privacy Policy
-- `/terms` - Terms of Service
-- `/404` - Not Found page
+## Production configuration
 
-**Protected Pages** (authenticated users only):
-- `/dashboard` - Professional analytics dashboard
-- `/my-bookings` - Client appointment history
-- `/settings` - Provider profile management
-- `/notifications` - Alert center
-- `/messages` - In-app messaging
-- `/calendar` - Calendar view with events
-- `/new-appointment` - Create new appointment
-- `/memos` - Memo management
-- `/tasks` - Task tracking
+Required variables:
 
-### Backend Architecture
-The server-side application uses Node.js with Express.js in a RESTful API design:
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL application connection; Neon keeps the existing serverless driver |
+| `DATABASE_URL_UNPOOLED` | Direct migration connection, when the application URL is pooled |
+| `SESSION_SECRET` | Stable, random secret of at least 32 characters, shared across workers |
+| `APP_ORIGIN` | Exact public HTTPS origin, without path or trailing slash |
+| `TRUST_PROXY` | Trusted proxy hop count; defaults to one in production |
+| `PORT` | Application port; defaults to 5000 |
 
-- **Framework**: Express.js with TypeScript for type safety
-- **API Design**: RESTful endpoints following resource-based URL patterns
-- **Data Layer**: Abstracted storage interface allowing for different implementations (currently MemStorage for development)
-- **Validation**: Zod schemas shared between frontend and backend for consistent validation
-- **Error Handling**: Centralized error handling middleware with proper HTTP status codes
-- **Session Management**: In-memory session storage for development
+Generate a secret locally with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and store it in the deployment environment.
 
-The backend implements a clean architecture with separation of concerns between routing, business logic, and data access.
+```sh
+npm run build
+npm start
+```
 
-### Database Design
-The application uses PostgreSQL with Drizzle ORM for type-safe database operations:
+Production checks require a migrated database, the overlap constraint, a strong secret and an HTTPS origin. Configure the reverse proxy hop count for the actual deployment network. Build output is generated from source and ignored by Git.
 
-- **ORM**: Drizzle ORM provides type-safe queries and schema management
-- **Schema**: Normalized relational design with tables for providers, services, appointments, reviews, and more
-- **Migrations**: Drizzle Kit handles schema migrations and database deployment
-- **Connection**: Uses Neon Database serverless PostgreSQL for cloud deployment
+Vercel serves `dist/public` and routes `/api/*` to the shared Node function in `api/index.js`. See [deployment configuration and cloud evidence](docs/VERCEL_DEPLOYMENT.md). Keep preview credentials isolated from production. Migrations run separately from builds.
 
-Key entities include providers (service professionals), services (offered treatments), appointments (bookings), reviews (client feedback), and personal records (memos/tasks).
+## Verification
 
-### Authentication & Authorization
-The application implements Replit Auth for secure user management:
+```sh
+npm run verify
+# Dedicated disposable database; name must begin appointments_test:
+# Supply a separate empty restore database and a temporary encryption key too:
+TEST_DATABASE_URL=postgresql://.../appointments_test RESTORE_DATABASE_URL=postgresql://.../appointments_test_restore RESTORE_TARGET_CONFIRM=appointments_test_restore BACKUP_ENCRYPTION_KEY=<64-hex-characters> npm run test:postgres
+npm audit --omit=dev
+```
 
-- **Replit Auth Integration**: Uses OpenID Connect with Replit as the authentication provider
-- **Session Management**: Uses in-memory storage for session management in development
-- **User Management**: Each user gets personalized access to their appointments, memos, and tasks
-- **Security**: Implements CORS, secure session cookies, and proper authentication middleware
-- **Landing Page**: Unauthenticated users see a landing page with sign-in prompt
-- **Dashboard Access**: Authenticated users get full access to the professional assistant platform
+`npm run verify` runs TypeScript, 24 HTTP/query/security regressions and the production build. The PostgreSQL suite adds 20 integration tests, including separate API processes, application restart, persistent sessions, onboarding rollback, guest privacy, logout replay and secure production cookies. CI provisions PostgreSQL and runs both suites plus the production dependency audit.
 
-## External Dependencies
+See [the verification record](docs/ENGINEERING_BASELINE.md).
 
-### Core Dependencies
-- **@neondatabase/serverless**: Serverless PostgreSQL database connection
-- **drizzle-orm** & **drizzle-kit**: Type-safe ORM and migration tools
-- **@tanstack/react-query**: Server state management and data fetching
-- **react-hook-form** & **@hookform/resolvers**: Form handling with validation
-- **zod**: Runtime type validation and schema definition
-- **date-fns**: Date manipulation and formatting utilities
+The complete public and private interface is documented in [interface completion and browser checks](docs/INTERFACE_COMPLETION.md), including client and provider workspaces, availability-backed booking changes, service management, calendar downloads and responsive navigation. Run `npm run dev:fixture` only for an isolated visual review with fictional in-memory data; it never connects to PostgreSQL and is not a production entry point.
 
-### UI Dependencies
-- **@radix-ui/***: Accessible, unstyled UI primitives for complex components
-- **tailwindcss**: Utility-first CSS framework for styling
-- **class-variance-authority**: Type-safe component variants
-- **lucide-react**: Consistent icon library
-- **wouter**: Lightweight client-side routing
+## Remaining delivery work
 
-### Development Dependencies
-- **vite**: Fast build tool and development server
-- **typescript**: Static type checking
-- **tsx**: TypeScript execution for Node.js development
-- **@replit/vite-plugin-***: Replit-specific development plugins
+The app is deployed at [appointments-booker-pi.vercel.app](https://appointments-booker-pi.vercel.app/login), using the dedicated Neon production database. The isolated preview passes live login, onboarding, booking, security and redeployment-persistence checks; see the deployment record for source revisions and evidence. Create your own account at `/login` and complete provider onboarding. No default production accounts or passwords exist. Password recovery, a durable email outbox, reminders and PayChangu verification are implemented with explicit activation gates. Configure an authorized sender/merchant before using them. Independent restoration of the production snapshot has passed. See [operational workflows and activation requirements](docs/OPERATIONAL_WORKFLOWS.md). Email ownership verification, SMS/push delivery and verified review submission remain delivery work. Working times and displayed prices currently use Malawi time and MWK.
 
-## Features Completed
-
-✅ **Appointment Booking** - Complete booking flow from discovery to confirmation
-✅ **Provider Management** - Profile settings, availability, services
-✅ **Analytics Dashboard** - Bookings, revenue, ratings tracking
-✅ **Personal Organization** - Memos and task management
-✅ **Client Management** - My bookings, appointment history
-✅ **Review System** - Client reviews and ratings
-✅ **Notifications** - Alert center for appointments and messages
-✅ **Messaging** - In-app communication system
-✅ **Calendar** - Visual schedule with event tracking
-✅ **Help & Support** - Comprehensive FAQ and support pages
-✅ **Responsive Design** - Mobile-first, fully responsive across devices
-✅ **PWA Ready** - Installable on mobile and desktop
-✅ **Authentication** - Replit Auth integration with secure sessions
-✅ **SEO Optimized** - Meta tags and proper page structure
-✅ **Error Handling** - 404 pages and error boundaries
-
-## Build & Deployment
-
-- **Build Command**: `npm run build`
-- **Development**: `npm run dev` (starts on port 5000)
-- **Production**: Deploy using Replit's built-in deployment
-- **Current Status**: All 20+ pages successfully compile
-- **Bundle Size**: Optimized with Vite code splitting
-
-The application is designed to be cloud-native and can be easily deployed to platforms like Replit, Vercel, or similar Node.js hosting environments.
+The production dependency audit is clean for this lockfile. Four moderate findings remain in development-only tooling, and routes now load in separate chunks with an initial JavaScript entry of approximately 286 KB. These results do not certify a full production security review, real external email delivery or real gateway/bank settlement.

@@ -1,12 +1,12 @@
-import { 
-  providers, 
-  services, 
-  timeSlots, 
+import {
+  providers,
+  services,
+  timeSlots,
   appointments,
   memos,
   tasks,
   users,
-  type Provider, 
+  type Provider,
   type InsertProvider,
   type Service,
   type InsertService,
@@ -19,12 +19,39 @@ import {
   type Task,
   type InsertTask,
   type User,
-  type UpsertUser
+  type UpsertUser,
 } from "@shared/schema";
-import { db } from "./db";
-import { eq } from "drizzle-orm";
+import type session from "express-session";
+import { BookingError, validDate, timeMinutes } from "./scheduling";
 
 export interface IStorage {
+  readonly kind: "memory" | "postgres";
+  readonly sessionStore?: session.Store;
+  close(): Promise<void>;
+  assertReady(): Promise<void>;
+  registerUser(input: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    passwordHash: string;
+  }): Promise<User>;
+  getCredential(
+    email: string,
+  ): Promise<
+    { userId: string; passwordHash: string; version: number } | undefined
+  >;
+  consumeAuthAttempt(
+    key: string,
+    windowMs: number,
+    limit: number,
+  ): Promise<boolean>;
+  getProviderByOwnerId(userId: string): Promise<Provider | undefined>;
+  onboardProvider(
+    profile: InsertProvider,
+    service: Omit<InsertService, "providerId">,
+    userId: string,
+  ): Promise<{ provider: Provider; service: Service }>;
+  getAppointmentsByClient(userId: string): Promise<Appointment[]>;
   // User operations
   // (IMPORTANT) these user operations are mandatory for Replit Auth.
   getUser(id: string): Promise<User | undefined>;
@@ -34,35 +61,57 @@ export interface IStorage {
   getAnalytics(providerId: number, date: string): Promise<any | undefined>;
   createReview(review: any): Promise<any>;
   getReviewsByProvider(providerId: number): Promise<any[]>;
-  updateProviderRating(providerId: number, rating: string, reviewCount: number): Promise<void>;
+  updateProviderRating(
+    providerId: number,
+    rating: string,
+    reviewCount: number,
+  ): Promise<void>;
 
   // Provider methods
-  createProvider(provider: InsertProvider): Promise<Provider>;
+  createProvider(
+    provider: InsertProvider,
+    ownerUserId: string,
+  ): Promise<Provider>;
   getProvider(id: number): Promise<Provider | undefined>;
   getProviders(): Promise<Provider[]>;
-  updateProvider(id: number, provider: Partial<InsertProvider>): Promise<Provider | undefined>;
+  updateProvider(
+    id: number,
+    provider: Partial<InsertProvider>,
+  ): Promise<Provider | undefined>;
 
   // Service methods
   createService(service: InsertService): Promise<Service>;
   getService(id: number): Promise<Service | undefined>;
   getServicesByProvider(providerId: number): Promise<Service[]>;
-  updateService(id: number, service: Partial<InsertService>): Promise<Service | undefined>;
+  updateService(
+    id: number,
+    service: Partial<InsertService>,
+  ): Promise<Service | undefined>;
   deleteService(id: number): Promise<boolean>;
 
   // Time slot methods
   createTimeSlot(timeSlot: InsertTimeSlot): Promise<TimeSlot>;
   getTimeSlotsByProvider(providerId: number): Promise<TimeSlot[]>;
-  updateTimeSlot(id: number, timeSlot: Partial<InsertTimeSlot>): Promise<TimeSlot | undefined>;
+  updateTimeSlot(
+    id: number,
+    timeSlot: Partial<InsertTimeSlot>,
+  ): Promise<TimeSlot | undefined>;
   deleteTimeSlot(id: number): Promise<boolean>;
 
   // Appointment methods
   createAppointment(appointment: InsertAppointment): Promise<Appointment>;
   getAppointment(id: number): Promise<Appointment | undefined>;
   getAppointmentsByProvider(providerId: number): Promise<Appointment[]>;
-  getAppointmentsByDate(providerId: number, date: string): Promise<Appointment[]>;
-  updateAppointment(id: number, appointment: Partial<InsertAppointment>): Promise<Appointment | undefined>;
+  getAppointmentsByDate(
+    providerId: number,
+    date: string,
+  ): Promise<Appointment[]>;
+  updateAppointment(
+    id: number,
+    appointment: Partial<InsertAppointment>,
+  ): Promise<Appointment | undefined>;
   deleteAppointment(id: number): Promise<boolean>;
-  
+
   // Memo methods
   createMemo(memo: InsertMemo): Promise<Memo>;
   getMemo(id: number): Promise<Memo | undefined>;
@@ -78,16 +127,106 @@ export interface IStorage {
   deleteTask(id: number): Promise<boolean>;
 
   // Utility methods
-  getAvailableSlots(providerId: number, date: string): Promise<string[]>;
-  isSlotAvailable(providerId: number, date: string, startTime: string, endTime: string): Promise<boolean>;
+  getAvailableSlots(
+    providerId: number,
+    date: string,
+    duration?: number,
+  ): Promise<string[]>;
+  isSlotAvailable(
+    providerId: number,
+    date: string,
+    startTime: string,
+    endTime: string,
+  ): Promise<boolean>;
 }
 
-export class DatabaseStorage implements IStorage {
+// Development storage only. All records disappear when the process restarts.
+export class MemoryStorage implements IStorage {
+  readonly kind = "memory" as const;
+  private credentials = new Map<
+    string,
+    { userId: string; passwordHash: string }
+  >();
+  private attempts = new Map<string, { count: number; expiresAt: number }>();
+  async close() {}
+  async assertReady() {
+    assertStorageReady();
+  }
+  async registerUser(input: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    passwordHash: string;
+  }): Promise<User> {
+    if (
+      this.credentials.has(input.email) ||
+      [...this.users.values()].some((user) => user.email === input.email)
+    )
+      throw new BookingError(
+        "Account cannot be created with these details",
+        409,
+      );
+    const user: User = {
+      id: crypto.randomUUID(),
+      email: input.email,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      profileImageUrl: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.users.set(user.id, user);
+    this.credentials.set(input.email, {
+      userId: user.id,
+      passwordHash: input.passwordHash,
+    });
+    return user;
+  }
+  async getCredential(email: string) {
+    const entry = this.credentials.get(email);
+    return entry ? { ...entry, version: 0 } : undefined;
+  }
+  async consumeAuthAttempt(key: string, windowMs: number, limit: number) {
+    const now = Date.now();
+    for (const [oldKey, entry] of this.attempts)
+      if (entry.expiresAt <= now) this.attempts.delete(oldKey);
+    const entry = this.attempts.get(key) ?? {
+      count: 0,
+      expiresAt: now + windowMs,
+    };
+    entry.count++;
+    this.attempts.set(key, entry);
+    return entry.count <= limit;
+  }
+  async getProviderByOwnerId(userId: string) {
+    return [...this.providers.values()].find(
+      (provider) => provider.ownerUserId === userId,
+    );
+  }
+  async onboardProvider(
+    profile: InsertProvider,
+    service: Omit<InsertService, "providerId">,
+    userId: string,
+  ) {
+    const provider = await this.createProvider(profile, userId);
+    return {
+      provider,
+      service: await this.createService({
+        ...service,
+        providerId: provider.id,
+      }),
+    };
+  }
+  async getAppointmentsByClient(userId: string) {
+    return [...this.appointments.values()].filter(
+      (appointment) => appointment.clientUserId === userId,
+    );
+  }
   // User operations
   // (IMPORTANT) these user operations are mandatory for Replit Auth.
   // Using in-memory storage for now to avoid database authentication issues
   private users: Map<string, User>;
-  
+
   async getUser(id: string): Promise<User | undefined> {
     return this.users.get(id);
   }
@@ -132,7 +271,7 @@ export class DatabaseStorage implements IStorage {
     this.reviews = new Map();
     this.analytics = new Map();
     this.currentId = 1;
-    
+
     // Initialize with sample data
     this.initializeSampleData();
   }
@@ -141,6 +280,7 @@ export class DatabaseStorage implements IStorage {
     // Create sample provider
     const provider: Provider = {
       id: 1,
+      ownerUserId: null,
       name: "Sarah Johnson",
       title: "Dr.",
       specialty: "Family Medicine",
@@ -153,13 +293,13 @@ export class DatabaseStorage implements IStorage {
       workingHours: {
         start: "09:00",
         end: "17:00",
-        days: [1, 2, 3, 4, 5]
+        days: [1, 2, 3, 4, 5],
       },
       socialLinks: {
         website: "https://sarahjohnson.com",
         instagram: "drsarahj",
-        twitter: "sarahjmd"
-      }
+        twitter: "sarahjmd",
+      },
     };
     this.providers.set(1, provider);
 
@@ -187,24 +327,25 @@ export class DatabaseStorage implements IStorage {
 
     // Create sample time slots (Monday to Friday, 9 AM to 5 PM)
     let slotId = 1;
-    for (let day = 1; day <= 5; day++) { // Monday to Friday
+    for (let day = 1; day <= 5; day++) {
+      // Monday to Friday
       for (let hour = 9; hour < 17; hour++) {
         const timeSlot: TimeSlot = {
           id: slotId++,
           providerId: 1,
           dayOfWeek: day,
-          startTime: `${hour.toString().padStart(2, '0')}:00`,
-          endTime: `${hour.toString().padStart(2, '0')}:30`,
+          startTime: `${hour.toString().padStart(2, "0")}:00`,
+          endTime: `${hour.toString().padStart(2, "0")}:30`,
           isAvailable: true,
         };
         this.timeSlots.set(timeSlot.id, timeSlot);
-        
+
         const timeSlot2: TimeSlot = {
           id: slotId++,
           providerId: 1,
           dayOfWeek: day,
-          startTime: `${hour.toString().padStart(2, '0')}:30`,
-          endTime: `${(hour + 1).toString().padStart(2, '0')}:00`,
+          startTime: `${hour.toString().padStart(2, "0")}:30`,
+          endTime: `${(hour + 1).toString().padStart(2, "0")}:00`,
           isAvailable: true,
         };
         this.timeSlots.set(timeSlot2.id, timeSlot2);
@@ -216,7 +357,8 @@ export class DatabaseStorage implements IStorage {
       id: slotId++,
       providerId: 1,
       title: "Important Patient Follow-up",
-      content: "Remember to follow up with Mrs. Anderson about her test results. She seemed anxious during the last visit.",
+      content:
+        "Remember to follow up with Mrs. Anderson about her test results. She seemed anxious during the last visit.",
       category: "client",
       isImportant: true,
       createdAt: new Date(),
@@ -226,7 +368,8 @@ export class DatabaseStorage implements IStorage {
       id: slotId++,
       providerId: 1,
       title: "Equipment Maintenance",
-      content: "Schedule annual maintenance for the X-ray machine. Due for service next month.",
+      content:
+        "Schedule annual maintenance for the X-ray machine. Due for service next month.",
       category: "general",
       isImportant: false,
       createdAt: new Date(),
@@ -269,15 +412,34 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Provider methods
-  async createProvider(insertProvider: InsertProvider): Promise<Provider> {
+  async createProvider(
+    insertProvider: InsertProvider,
+    ownerUserId: string,
+  ): Promise<Provider> {
+    if (
+      [...this.providers.values()].some(
+        (provider) =>
+          provider.ownerUserId === ownerUserId ||
+          provider.email === insertProvider.email,
+      )
+    )
+      throw new BookingError("A provider profile already exists", 409);
     const id = this.currentId++;
-    const provider: Provider = { 
-      ...insertProvider, 
-      id, 
-      rating: "0.00", 
-      reviewCount: 0, 
+    const provider: Provider = {
+      ...insertProvider,
+      id,
+      ownerUserId,
+      title: insertProvider.title ?? "",
+      workingHours: insertProvider.workingHours ?? {
+        start: "09:00",
+        end: "17:00",
+        days: [1, 2, 3, 4, 5],
+      },
+      socialLinks: insertProvider.socialLinks ?? {},
+      rating: "0.00",
+      reviewCount: 0,
       isActive: true,
-      bio: insertProvider.bio || null
+      bio: insertProvider.bio || null,
     };
     this.providers.set(id, provider);
     return provider;
@@ -288,13 +450,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProviders(): Promise<Provider[]> {
-    return Array.from(this.providers.values()).filter(p => p.isActive);
+    return Array.from(this.providers.values()).filter((p) => p.isActive);
   }
 
-  async updateProvider(id: number, provider: Partial<InsertProvider>): Promise<Provider | undefined> {
+  async updateProvider(
+    id: number,
+    provider: Partial<InsertProvider>,
+  ): Promise<Provider | undefined> {
     const existing = this.providers.get(id);
     if (!existing) return undefined;
-    
+
     const updated = { ...existing, ...provider };
     this.providers.set(id, updated);
     return updated;
@@ -303,11 +468,11 @@ export class DatabaseStorage implements IStorage {
   // Service methods
   async createService(insertService: InsertService): Promise<Service> {
     const id = this.currentId++;
-    const service: Service = { 
-      ...insertService, 
-      id, 
-      isActive: true, 
-      description: insertService.description || null 
+    const service: Service = {
+      ...insertService,
+      id,
+      isActive: true,
+      description: insertService.description || null,
     };
     this.services.set(id, service);
     return service;
@@ -319,14 +484,17 @@ export class DatabaseStorage implements IStorage {
 
   async getServicesByProvider(providerId: number): Promise<Service[]> {
     return Array.from(this.services.values()).filter(
-      s => s.providerId === providerId && s.isActive
+      (s) => s.providerId === providerId && s.isActive,
     );
   }
 
-  async updateService(id: number, service: Partial<InsertService>): Promise<Service | undefined> {
+  async updateService(
+    id: number,
+    service: Partial<InsertService>,
+  ): Promise<Service | undefined> {
     const existing = this.services.get(id);
     if (!existing) return undefined;
-    
+
     const updated = { ...existing, ...service };
     this.services.set(id, updated);
     return updated;
@@ -335,7 +503,7 @@ export class DatabaseStorage implements IStorage {
   async deleteService(id: number): Promise<boolean> {
     const existing = this.services.get(id);
     if (!existing) return false;
-    
+
     const updated = { ...existing, isActive: false };
     this.services.set(id, updated);
     return true;
@@ -351,14 +519,17 @@ export class DatabaseStorage implements IStorage {
 
   async getTimeSlotsByProvider(providerId: number): Promise<TimeSlot[]> {
     return Array.from(this.timeSlots.values()).filter(
-      ts => ts.providerId === providerId && ts.isAvailable
+      (ts) => ts.providerId === providerId && ts.isAvailable,
     );
   }
 
-  async updateTimeSlot(id: number, timeSlot: Partial<InsertTimeSlot>): Promise<TimeSlot | undefined> {
+  async updateTimeSlot(
+    id: number,
+    timeSlot: Partial<InsertTimeSlot>,
+  ): Promise<TimeSlot | undefined> {
     const existing = this.timeSlots.get(id);
     if (!existing) return undefined;
-    
+
     const updated = { ...existing, ...timeSlot };
     this.timeSlots.set(id, updated);
     return updated;
@@ -367,21 +538,36 @@ export class DatabaseStorage implements IStorage {
   async deleteTimeSlot(id: number): Promise<boolean> {
     const existing = this.timeSlots.get(id);
     if (!existing) return false;
-    
+
     const updated = { ...existing, isAvailable: false };
     this.timeSlots.set(id, updated);
     return true;
   }
 
   // Appointment methods
-  async createAppointment(insertAppointment: InsertAppointment): Promise<Appointment> {
+  async createAppointment(
+    insertAppointment: InsertAppointment,
+  ): Promise<Appointment> {
+    // No await between checking the interval and inserting it: atomic in this process.
+    this.validateAppointment(insertAppointment);
     const id = this.currentId++;
-    const appointment: Appointment = { 
-      ...insertAppointment, 
-      id, 
-      status: insertAppointment.status || 'pending',
+    const appointment: Appointment = {
+      ...insertAppointment,
+      id,
+      clientUserId: insertAppointment.clientUserId ?? null,
+      messageVersion: 0,
+      startsAt: new Date(
+        `${insertAppointment.appointmentDate}T${insertAppointment.startTime}:00Z`,
+      ),
+      endsAt: new Date(
+        `${insertAppointment.appointmentDate}T${insertAppointment.endTime}:00Z`,
+      ),
+      status: insertAppointment.status || "pending",
+      paymentStatus: insertAppointment.paymentStatus ?? "pending",
+      paymentAmount: insertAppointment.paymentAmount ?? null,
+      stripePaymentId: insertAppointment.stripePaymentId ?? null,
       createdAt: new Date(),
-      notes: insertAppointment.notes || null
+      notes: insertAppointment.notes || null,
     };
     this.appointments.set(id, appointment);
     return appointment;
@@ -393,21 +579,55 @@ export class DatabaseStorage implements IStorage {
 
   async getAppointmentsByProvider(providerId: number): Promise<Appointment[]> {
     return Array.from(this.appointments.values()).filter(
-      a => a.providerId === providerId
+      (a) => a.providerId === providerId,
     );
   }
 
-  async getAppointmentsByDate(providerId: number, date: string): Promise<Appointment[]> {
+  async getAppointmentsByDate(
+    providerId: number,
+    date: string,
+  ): Promise<Appointment[]> {
     return Array.from(this.appointments.values()).filter(
-      a => a.providerId === providerId && a.appointmentDate === date
+      (a) => a.providerId === providerId && a.appointmentDate === date,
     );
   }
 
-  async updateAppointment(id: number, appointment: Partial<InsertAppointment>): Promise<Appointment | undefined> {
+  async updateAppointment(
+    id: number,
+    appointment: Partial<InsertAppointment>,
+  ): Promise<Appointment | undefined> {
     const existing = this.appointments.get(id);
     if (!existing) return undefined;
-    
+
     const updated = { ...existing, ...appointment };
+    if (
+      updated.providerId !== existing.providerId ||
+      updated.clientUserId !== existing.clientUserId
+    )
+      throw new BookingError("Booking ownership is immutable", 400);
+    const changesTime = [
+      "serviceId",
+      "appointmentDate",
+      "startTime",
+      "endTime",
+    ].some(
+      (key) =>
+        updated[key as keyof Appointment] !==
+        existing[key as keyof Appointment],
+    );
+    if (
+      changesTime ||
+      (existing.status === "cancelled" && updated.status !== "cancelled")
+    )
+      this.validateAppointment(updated, id);
+    if (
+      ["appointmentDate", "startTime", "endTime", "status", "clientEmail"].some(
+        (key) =>
+          updated[key as keyof Appointment] !==
+          existing[key as keyof Appointment],
+      )
+    )
+      updated.messageVersion = existing.messageVersion + 1;
     this.appointments.set(id, updated);
     return updated;
   }
@@ -417,55 +637,128 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Utility methods
-  async getAvailableSlots(providerId: number, date: string): Promise<string[]> {
+  async getAvailableSlots(
+    providerId: number,
+    date: string,
+    duration = 30,
+  ): Promise<string[]> {
     const provider = await this.getProvider(providerId);
-    if (!provider || !provider.workingHours) return [];
+    if (
+      !provider?.isActive ||
+      !provider.workingHours ||
+      !validDate(date) ||
+      !Number.isInteger(duration) ||
+      duration < 1 ||
+      duration > 720
+    )
+      return [];
 
-    const dateObj = new Date(date);
-    const dayOfWeek = dateObj.getDay();
-    
+    const dayOfWeek = new Date(`${date}T00:00:00Z`).getUTCDay();
+
     if (!provider.workingHours.days.includes(dayOfWeek)) {
       return [];
     }
 
-    const appointments = await this.getAppointmentsByDate(providerId, date);
-    const bookedTimes = appointments.map(a => a.startTime);
-    
+    const appointments = (
+      await this.getAppointmentsByDate(providerId, date)
+    ).filter((a) => a.status !== "cancelled");
+
     const slots: string[] = [];
-    let [currentHour, currentMin] = provider.workingHours.start.split(":").map(Number);
+    let [currentHour, currentMin] = provider.workingHours.start
+      .split(":")
+      .map(Number);
     const [endHour, endMin] = provider.workingHours.end.split(":").map(Number);
     const endTotalMinutes = endHour * 60 + endMin;
 
-    while (currentHour * 60 + currentMin < endTotalMinutes) {
-      const timeStr = `${currentHour.toString().padStart(2, '0')}:${currentMin.toString().padStart(2, '0')}`;
-      if (!bookedTimes.includes(timeStr)) {
+    while (currentHour * 60 + currentMin + duration <= endTotalMinutes) {
+      const timeStr = `${currentHour.toString().padStart(2, "0")}:${currentMin.toString().padStart(2, "0")}`;
+      const start = currentHour * 60 + currentMin;
+      if (
+        !appointments.some(
+          (a) =>
+            start < timeMinutes(a.endTime) &&
+            start + duration > timeMinutes(a.startTime),
+        )
+      ) {
         slots.push(timeStr);
       }
-      
+
       currentMin += 30;
       if (currentMin >= 60) {
         currentHour += 1;
         currentMin -= 60;
       }
     }
-    
+
     return slots.sort();
   }
 
-  async isSlotAvailable(providerId: number, date: string, startTime: string, endTime: string): Promise<boolean> {
-    const appointments = await this.getAppointmentsByDate(providerId, date);
-    
-    for (const appointment of appointments) {
+  async isSlotAvailable(
+    providerId: number,
+    date: string,
+    startTime: string,
+    endTime: string,
+  ): Promise<boolean> {
+    try {
+      this.validateAppointment({
+        providerId,
+        appointmentDate: date,
+        startTime,
+        endTime,
+        status: "confirmed",
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private validateAppointment(
+    candidate: Pick<
+      InsertAppointment,
+      "providerId" | "appointmentDate" | "startTime" | "endTime" | "status"
+    >,
+    excludeId?: number,
+  ) {
+    const provider = this.providers.get(candidate.providerId);
+    const hours = provider?.workingHours;
+    const start = timeMinutes(candidate.startTime);
+    const end = timeMinutes(candidate.endTime);
+    if (
+      !validDate(candidate.appointmentDate) ||
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      end <= start
+    ) {
+      throw new BookingError("Invalid appointment date or interval");
+    }
+    if (candidate.status === "cancelled") return;
+    if (
+      !provider?.isActive ||
+      !hours ||
+      !hours.days.includes(
+        new Date(`${candidate.appointmentDate}T00:00:00Z`).getUTCDay(),
+      ) ||
+      start < timeMinutes(hours.start) ||
+      end > timeMinutes(hours.end)
+    ) {
+      throw new BookingError("Appointment is outside provider working hours");
+    }
+    for (const appointment of this.appointments.values()) {
       if (
-        (startTime >= appointment.startTime && startTime < appointment.endTime) ||
-        (endTime > appointment.startTime && endTime <= appointment.endTime) ||
-        (startTime <= appointment.startTime && endTime >= appointment.endTime)
+        appointment.id === excludeId ||
+        appointment.status === "cancelled" ||
+        appointment.providerId !== candidate.providerId ||
+        appointment.appointmentDate !== candidate.appointmentDate
+      )
+        continue;
+      if (
+        start < timeMinutes(appointment.endTime) &&
+        end > timeMinutes(appointment.startTime)
       ) {
-        return false;
+        throw new BookingError("Time slot is not available", 409);
       }
     }
-    
-    return true;
   }
 
   // Memo methods
@@ -488,13 +781,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getMemosByProvider(providerId: number): Promise<Memo[]> {
-    return Array.from(this.memos.values()).filter(m => m.providerId === providerId);
+    return Array.from(this.memos.values()).filter(
+      (m) => m.providerId === providerId,
+    );
   }
 
-  async updateMemo(id: number, memo: Partial<InsertMemo>): Promise<Memo | undefined> {
+  async updateMemo(
+    id: number,
+    memo: Partial<InsertMemo>,
+  ): Promise<Memo | undefined> {
     const existing = this.memos.get(id);
     if (!existing) return undefined;
-    
+
     const updated = { ...existing, ...memo, updatedAt: new Date() };
     this.memos.set(id, updated);
     return updated;
@@ -510,8 +808,8 @@ export class DatabaseStorage implements IStorage {
     const task: Task = {
       ...insertTask,
       id,
-      status: insertTask.status || 'pending',
-      priority: insertTask.priority || 'medium',
+      status: insertTask.status || "pending",
+      priority: insertTask.priority || "medium",
       createdAt: new Date(),
       updatedAt: new Date(),
       completedAt: null,
@@ -528,18 +826,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTasksByProvider(providerId: number): Promise<Task[]> {
-    return Array.from(this.tasks.values()).filter(t => t.providerId === providerId);
+    return Array.from(this.tasks.values()).filter(
+      (t) => t.providerId === providerId,
+    );
   }
 
-  async updateTask(id: number, task: Partial<InsertTask>): Promise<Task | undefined> {
+  async updateTask(
+    id: number,
+    task: Partial<InsertTask>,
+  ): Promise<Task | undefined> {
     const existing = this.tasks.get(id);
     if (!existing) return undefined;
-    
-    const updated = { 
-      ...existing, 
-      ...task, 
+
+    const updated = {
+      ...existing,
+      ...task,
       updatedAt: new Date(),
-      completedAt: task.status === 'completed' ? new Date() : existing.completedAt
+      completedAt:
+        task.status === "completed" ? new Date() : existing.completedAt,
     };
     this.tasks.set(id, updated);
     return updated;
@@ -563,10 +867,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getReviewsByProvider(providerId: number): Promise<any[]> {
-    return Array.from(this.reviews.values()).filter(r => r.providerId === providerId);
+    return Array.from(this.reviews.values()).filter(
+      (r) => r.providerId === providerId,
+    );
   }
 
-  async updateProviderRating(providerId: number, rating: string, reviewCount: number): Promise<void> {
+  async updateProviderRating(
+    providerId: number,
+    rating: string,
+    reviewCount: number,
+  ): Promise<void> {
     const provider = this.providers.get(providerId);
     if (provider) {
       provider.rating = rating;
@@ -576,4 +886,10 @@ export class DatabaseStorage implements IStorage {
   }
 }
 
-export const storage = new DatabaseStorage();
+export function assertStorageReady(environment = process.env.NODE_ENV) {
+  if (environment === "production") {
+    throw new Error(
+      "Production requires a durable storage implementation. MemoryStorage is development-only.",
+    );
+  }
+}

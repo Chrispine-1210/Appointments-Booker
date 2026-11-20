@@ -3,7 +3,9 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let message = text;
+    try { message = JSON.parse(text).message ?? text; } catch { /* Text response. */ }
+    throw new Error(`${res.status}: ${message}`);
   }
 }
 
@@ -29,7 +31,14 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey[0] as string, {
+    const parameters = queryKey[1];
+    const url = new URL(queryKey[0] as string, window.location.origin);
+    if (parameters && typeof parameters === "object") {
+      for (const [key, value] of Object.entries(parameters)) {
+        if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+      }
+    }
+    const res = await fetch(`${url.pathname}${url.search}`, {
       credentials: "include",
     });
 
@@ -44,7 +53,7 @@ export const getQueryFn: <T>(options: {
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "returnNull" }),
+      queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: 5 * 60 * 1000, // 5 minutes

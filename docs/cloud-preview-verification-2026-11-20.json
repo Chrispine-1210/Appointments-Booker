@@ -1,0 +1,129 @@
+{
+  "sourceSha": "7b69de9414948ac77ba0df2a2d38954b5ce4444a",
+  "deploymentId": "dpl_9gXrVPZyRsk8aYa8xJQPU7tR5Wi8",
+  "origin": "https://appointments-booker-qpdh31t3a-chrispine-1210s-projects.vercel.app",
+  "databaseBranch": "br-orange-band-b9iv8e7e",
+  "checks": [
+    {
+      "path": "/api/health",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/user",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/register",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/user",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/providers/onboard",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/user",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/appointments",
+      "method": "POST",
+      "status": 201,
+      "expected": 201,
+      "pass": true
+    },
+    {
+      "path": "/api/appointments",
+      "method": "POST",
+      "status": 409,
+      "expected": 409,
+      "pass": true
+    },
+    {
+      "path": "/api/providers/1/appointments",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/logout",
+      "method": "POST",
+      "status": 403,
+      "expected": 403,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/logout",
+      "method": "POST",
+      "status": 204,
+      "expected": 204,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/user",
+      "method": "GET",
+      "status": 401,
+      "expected": 401,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/login",
+      "method": "POST",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/user",
+      "method": "GET",
+      "status": 200,
+      "expected": 200,
+      "pass": true
+    },
+    {
+      "path": "/api/unknown",
+      "method": "GET",
+      "status": 404,
+      "expected": 404,
+      "pass": true
+    },
+    {
+      "path": "/api/auth/logout",
+      "method": "POST",
+      "status": 204,
+      "expected": 204,
+      "pass": true
+    }
+  ],
+  "result": "PASS",
+  "dateMalawi": "2026-11-20",
+  "secureCookie": {
+    "secure": true,
+    "httpOnly": true,
+    "sameSite": "lax"
+  },
+  "dynamicProviderId": true,
+  "fixtureScope": "Isolated Neon preview branch only; no production signup fixtures."
+}

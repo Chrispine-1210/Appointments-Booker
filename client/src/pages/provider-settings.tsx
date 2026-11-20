@@ -1,320 +1,285 @@
-import * as React from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { z } from "zod";
-import Navigation from "@/components/navigation";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { useState, type FormEvent } from "react";
+import { Link } from "wouter";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ExternalLink, ShieldCheck, Save } from "lucide-react";
+import { useProvider } from "@/hooks/useWorkspace";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import type { Provider } from "@shared/schema";
-
-const providerSchema = z.object({
-  title: z.string().optional(),
-  name: z.string().min(1, "Name is required"),
-  specialty: z.string().min(1, "Specialty is required"),
-  email: z.string().email("Valid email is required"),
-  phone: z.string().min(1, "Phone is required"),
-  bio: z.string().optional(),
-  socialLinks: z.object({
-    website: z.string().url().optional().or(z.literal("")),
-    instagram: z.string().optional(),
-    twitter: z.string().optional(),
-    linkedin: z.string().optional(),
-    facebook: z.string().optional(),
-  }).optional(),
-});
-
-type ProviderFormData = z.infer<typeof providerSchema>;
-
+import {
+  PageHeader,
+  Field,
+  Avatar,
+  LoadingState,
+  ErrorState,
+} from "@/components/product-ui";
 export default function ProviderSettings() {
+  const query = useProvider();
+  const p = query.data;
+  const { user, providerId } = useAuth();
+  const client = useQueryClient();
   const { toast } = useToast();
-  const { data: provider, isLoading } = useQuery<Provider>({
-    queryKey: ["/api/providers/1"],
-  });
-
-  const form = useForm<ProviderFormData>({
-    resolver: zodResolver(providerSchema),
-    defaultValues: {
-      title: provider?.title || "",
-      name: provider?.name || "",
-      specialty: provider?.specialty || "",
-      email: provider?.email || "",
-      phone: provider?.phone || "",
-      bio: provider?.bio || "",
-      socialLinks: provider?.socialLinks || {
-        website: "",
-        instagram: "",
-        twitter: "",
-        linkedin: "",
-        facebook: "",
-      },
+  const [tab, setTab] = useState("Profile");
+  const [error, setError] = useState("");
+  const mutation = useMutation({
+    mutationFn: async (data: unknown) =>
+      (await apiRequest("PATCH", "/api/providers/" + providerId, data)).json(),
+    onSuccess: async () => {
+      await client.invalidateQueries();
+      toast({
+        title: "Settings saved",
+        description: "Your booking page has been updated.",
+      });
     },
   });
-
-  // Update default values when provider data is loaded
-  React.useEffect(() => {
-    if (provider) {
-      form.reset({
-        title: provider.title || "",
-        name: provider.name || "",
-        specialty: provider.specialty || "",
-        email: provider.email || "",
-        phone: provider.phone || "",
-        bio: provider.bio || "",
-        socialLinks: provider.socialLinks || {
-          website: "",
-          instagram: "",
-          twitter: "",
-          linkedin: "",
-          facebook: "",
-        },
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    setError("");
+    if (tab === "Working hours") {
+      const hours = {
+        start: String(f.get("start")),
+        end: String(f.get("end")),
+        days: f.getAll("days").map(Number),
+      };
+      if (!hours.days.length || hours.end <= hours.start) {
+        setError("Choose a working day and a closing time after opening.");
+        return;
+      }
+      mutation.mutate({ workingHours: hours });
+    } else {
+      const website = String(f.get("website"));
+      mutation.mutate({
+        name: String(f.get("name")),
+        title: String(f.get("title")),
+        specialty: String(f.get("specialty")),
+        email: String(f.get("email")),
+        phone: String(f.get("phone")),
+        bio: String(f.get("bio")),
+        socialLinks: { ...p?.socialLinks, website },
       });
     }
-  }, [provider, form]);
-
-  const updateProviderMutation = useMutation({
-    mutationFn: async (data: ProviderFormData) => {
-      return apiRequest("PATCH", "/api/providers/1", data);
-    },
-    onSuccess: () => {
-      toast({
-        title: "Profile Updated",
-        description: "Your profile has been successfully updated.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Update Failed",
-        description: error.message || "Failed to update profile",
-        variant: "destructive",
-      });
-    },
-  });
-
+  };
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">Provider Settings</h1>
-          <p className="text-slate-600">Manage your professional profile and availability</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-8">
-          {isLoading ? (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-              <p className="text-slate-600">Loading profile...</p>
-            </div>
-          ) : (
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit((data) => updateProviderMutation.mutate(data))} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                  <div className="sm:col-span-1">
-                    <FormField
-                      control={form.control}
-                      name="title"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Title</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Dr." {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div className="sm:col-span-3">
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Full Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Sarah Johnson" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="specialty"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Specialty</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Family Medicine" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" placeholder="email@example.com" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone</FormLabel>
-                        <FormControl>
-                          <Input placeholder="(555) 123-4567" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <FormField
-                  control={form.control}
-                  name="bio"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Professional Bio</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Tell clients about your experience and qualifications..." {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="border-t border-slate-200 pt-6">
-                  <h3 className="text-lg font-bold text-slate-800 mb-4">Social Links</h3>
-                  <div className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name="socialLinks.website"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Website URL</FormLabel>
-                          <FormControl>
-                            <Input placeholder="https://yourwebsite.com" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="socialLinks.instagram"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Instagram Handle</FormLabel>
-                            <FormControl>
-                              <Input placeholder="@username" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="socialLinks.twitter"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Twitter Handle</FormLabel>
-                            <FormControl>
-                              <Input placeholder="@username" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={updateProviderMutation.isPending}
-                  className="w-full bg-primary text-white py-3 rounded-lg hover:bg-secondary transition-colors font-semibold disabled:opacity-50"
-                  data-testid="button-save-profile"
-                >
-                  {updateProviderMutation.isPending ? "Saving..." : "Save Changes"}
-                </button>
-              </form>
-            </Form>
-          )}
-        </div>
-
-        {/* Additional Settings Sections */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-8">
-          {/* Working Hours */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <i className="fas fa-clock text-primary text-xl"></i>
-              <h3 className="text-xl font-bold text-slate-800">Working Hours</h3>
-            </div>
-            <p className="text-slate-600 text-sm mb-4">Set your availability for appointments</p>
-            <button className="w-full border border-primary text-primary px-4 py-2 rounded-lg hover:bg-primary hover:text-white transition-colors font-medium">
-              <i className="fas fa-cog mr-2"></i>Manage Hours
-            </button>
-          </div>
-
-          {/* Services */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <i className="fas fa-briefcase text-primary text-xl"></i>
-              <h3 className="text-xl font-bold text-slate-800">Services</h3>
-            </div>
-            <p className="text-slate-600 text-sm mb-4">Add or edit services you offer</p>
-            <button className="w-full border border-primary text-primary px-4 py-2 rounded-lg hover:bg-primary hover:text-white transition-colors font-medium">
-              <i className="fas fa-plus mr-2"></i>Manage Services
-            </button>
-          </div>
-
-          {/* Notifications */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <i className="fas fa-bell text-primary text-xl"></i>
-              <h3 className="text-xl font-bold text-slate-800">Notifications</h3>
-            </div>
-            <p className="text-slate-600 text-sm mb-4">Configure alert preferences</p>
-            <button className="w-full border border-primary text-primary px-4 py-2 rounded-lg hover:bg-primary hover:text-white transition-colors font-medium">
-              <i className="fas fa-sliders-h mr-2"></i>Settings
-            </button>
-          </div>
-
-          {/* Payment */}
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <i className="fas fa-credit-card text-primary text-xl"></i>
-              <h3 className="text-xl font-bold text-slate-800">Payment</h3>
-            </div>
-            <p className="text-slate-600 text-sm mb-4">Manage payment methods and billing</p>
-            <button className="w-full border border-primary text-primary px-4 py-2 rounded-lg hover:bg-primary hover:text-white transition-colors font-medium">
-              <i className="fas fa-wallet mr-2"></i>Manage Payment
-            </button>
-          </div>
-        </div>
+    <>
+      <PageHeader
+        eyebrow="Make it work for you"
+        title="Settings"
+        description="Your public profile, availability and account information."
+        actions={
+          <Link href={"/book/" + providerId} className="btn btn-secondary">
+            <ExternalLink size={17} />
+            View booking page
+          </Link>
+        }
+      />
+      <div className="segmented" style={{ marginBottom: 25 }}>
+        {["Profile", "Working hours", "Account"].map((t) => (
+          <button
+            key={t}
+            className={tab === t ? "active" : ""}
+            aria-pressed={tab === t}
+            onClick={() => {
+              setTab(t);
+              setError("");
+              mutation.reset();
+            }}
+          >
+            {t}
+          </button>
+        ))}
       </div>
-    </div>
+      {query.isLoading ? (
+        <LoadingState />
+      ) : query.isError || !p ? (
+        <ErrorState retry={() => query.refetch()} />
+      ) : (
+        <section className="card" style={{ maxWidth: 850 }}>
+          <div className="card-header">
+            <div>
+              <h2>
+                {tab === "Profile"
+                  ? "Your professional profile"
+                  : tab === "Working hours"
+                    ? "When clients can book"
+                    : "Your account"}
+              </h2>
+              <p>
+                {tab === "Account"
+                  ? "Sign-in details are separate from your public profile."
+                  : "Changes appear on your public booking page."}
+              </p>
+            </div>
+            {tab === "Profile" && <Avatar name={p.name} />}
+          </div>
+          <div className="card-body">
+            {tab === "Account" ? (
+              <div className="form-stack">
+                <dl className="detail-grid">
+                  <div>
+                    <dt>Name</dt>
+                    <dd>
+                      {user?.firstName} {user?.lastName}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Sign-in email</dt>
+                    <dd>{user?.email}</dd>
+                  </div>
+                  <div>
+                    <dt>Account type</dt>
+                    <dd>Professional</dd>
+                  </div>
+                  <div>
+                    <dt>Time zone</dt>
+                    <dd>Africa/Blantyre · CAT</dd>
+                  </div>
+                </dl>
+                <div className="notice inline">
+                  <ShieldCheck size={23} />
+                  <span>
+                    Keep your password private. Sign out using the account
+                    control in the sidebar when using a shared device.
+                  </span>
+                </div>
+                <p className="small muted">
+                  <Link href="/forgot-password" className="text-link">
+                    Request a password reset
+                  </Link>
+                  . Recovery requires configured email delivery. Email ownership
+                  verification remains separate. Changing your public contact
+                  email does not change your sign-in email.
+                </p>
+              </div>
+            ) : (
+              <form className="form-stack" key={tab} onSubmit={submit}>
+                {tab === "Profile" ? (
+                  <>
+                    <div className="form-grid">
+                      <Field label="Title (optional)">
+                        <input
+                          name="title"
+                          maxLength={30}
+                          defaultValue={p.title ?? ""}
+                        />
+                      </Field>
+                      <Field label="Public name">
+                        <input
+                          name="name"
+                          required
+                          maxLength={200}
+                          defaultValue={p.name}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Specialty">
+                      <input
+                        name="specialty"
+                        required
+                        maxLength={200}
+                        defaultValue={p.specialty}
+                      />
+                    </Field>
+                    <div className="form-grid">
+                      <Field label="Public email">
+                        <input
+                          name="email"
+                          type="email"
+                          required
+                          defaultValue={p.email}
+                        />
+                      </Field>
+                      <Field label="Public phone">
+                        <input
+                          name="phone"
+                          type="tel"
+                          required
+                          maxLength={40}
+                          defaultValue={p.phone}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="About your practice">
+                      <textarea
+                        name="bio"
+                        maxLength={3000}
+                        defaultValue={p.bio ?? ""}
+                      />
+                    </Field>
+                    <Field label="Website (optional)">
+                      <input
+                        name="website"
+                        type="url"
+                        placeholder="https://…"
+                        defaultValue={p.socialLinks?.website ?? ""}
+                      />
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    <p className="small muted">
+                      Appointment times use Malawi local time (CAT). Only your
+                      chosen working days and hours can be booked.
+                    </p>
+                    <div className="form-grid">
+                      <Field label="Opens">
+                        <input
+                          name="start"
+                          type="time"
+                          required
+                          defaultValue={p.workingHours?.start ?? "09:00"}
+                        />
+                      </Field>
+                      <Field label="Closes">
+                        <input
+                          name="end"
+                          type="time"
+                          required
+                          defaultValue={p.workingHours?.end ?? "17:00"}
+                        />
+                      </Field>
+                    </div>
+                    <span className="field">Working days</span>
+                    <div className="day-picker">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+                        (d, i) => (
+                          <label key={d}>
+                            <input
+                              name="days"
+                              type="checkbox"
+                              value={i}
+                              defaultChecked={p.workingHours?.days.includes(i)}
+                            />
+                            <span>{d}</span>
+                          </label>
+                        ),
+                      )}
+                    </div>
+                    <div className="notice">
+                      Changing hours affects newly available times. Appointments
+                      already booked remain in your calendar.
+                    </div>
+                  </>
+                )}
+                {(error || mutation.error) && (
+                  <p role="alert" className="form-error">
+                    {error || mutation.error?.message}
+                  </p>
+                )}
+                <div>
+                  <button
+                    className="btn btn-primary"
+                    disabled={mutation.isPending}
+                  >
+                    <Save size={16} />
+                    {mutation.isPending ? "Saving…" : "Save changes"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </section>
+      )}
+    </>
   );
 }

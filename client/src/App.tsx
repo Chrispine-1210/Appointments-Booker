@@ -1,100 +1,138 @@
+import { lazy, Suspense } from "react";
 import { Route, Switch } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
-import { useAuth } from "@/hooks/useAuth";
-
-import Home from "@/pages/home";
-import FindProviders from "@/pages/find-providers";
-import ProviderDashboard from "@/pages/provider-dashboard";
-import Booking from "@/pages/booking";
-import NewAppointment from "@/pages/new-appointment";
-import Memos from "@/pages/memos";
-import Tasks from "@/pages/tasks";
-import MyBookings from "@/pages/my-bookings";
-import ProviderSettings from "@/pages/provider-settings";
-import AppointmentConfirmation from "@/pages/appointment-confirmation";
-import Reviews from "@/pages/reviews";
-import Notifications from "@/pages/notifications";
-import About from "@/pages/about";
-import Help from "@/pages/help";
-import Contact from "@/pages/contact";
-import Privacy from "@/pages/privacy";
-import Terms from "@/pages/terms";
-import Messages from "@/pages/messages";
-import Calendar from "@/pages/calendar";
-import NotFound from "@/pages/not-found";
-
+import { AccountGate } from "@/components/account-gate";
+import { Toaster } from "@/components/ui/toaster";
+import { LoadingState } from "@/components/product-ui";
+import AppLayout from "@/components/app-layout";
+const Home = lazy(() => import("@/pages/home"));
+const Login = lazy(() => import("@/pages/login"));
+const PasswordRecovery = lazy(() => import("@/pages/password-recovery"));
+const PaymentReturn = lazy(() => import("@/pages/payment-return"));
+const OperationsPage = lazy(() => import("@/pages/operations"));
+const Onboarding = lazy(() => import("@/pages/onboarding"));
+const FindProviders = lazy(() => import("@/pages/find-providers"));
+const ProviderDashboard = lazy(() => import("@/pages/provider-dashboard"));
+const Booking = lazy(() => import("@/pages/booking"));
+const NewAppointment = lazy(() => import("@/pages/new-appointment"));
+const Memos = lazy(() => import("@/pages/memos"));
+const Tasks = lazy(() => import("@/pages/tasks"));
+const MyBookings = lazy(() => import("@/pages/my-bookings"));
+const ProviderSettings = lazy(() => import("@/pages/provider-settings"));
+const AppointmentConfirmation = lazy(
+  () => import("@/pages/appointment-confirmation"),
+);
+const Reviews = lazy(() => import("@/pages/reviews"));
+const Activity = lazy(() => import("@/pages/notifications"));
+const About = lazy(() => import("@/pages/about"));
+const Help = lazy(() => import("@/pages/help"));
+const Contact = lazy(() => import("@/pages/contact"));
+const Privacy = lazy(() => import("@/pages/privacy"));
+const Terms = lazy(() => import("@/pages/terms"));
+const Contacts = lazy(() => import("@/pages/messages"));
+const Calendar = lazy(() => import("@/pages/calendar"));
+const Services = lazy(() => import("@/pages/services"));
+const Appointments = lazy(() => import("@/pages/appointments"));
+const NotFound = lazy(() => import("@/pages/not-found"));
 function AppRoutes() {
-  const { user, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-slate-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="page-transition min-h-screen">
-      <Switch>
-        {/* Public routes */}
-        <Route path="/" component={user ? ProviderDashboard : Home} />
-        <Route path="/find" component={FindProviders} />
-        <Route path="/book/:providerId" component={Booking} />
-        <Route path="/reviews/:providerId" component={Reviews} />
-        <Route path="/confirmation/:appointmentId" component={AppointmentConfirmation} />
-        <Route path="/about" component={About} />
-        <Route path="/help" component={Help} />
-        <Route path="/contact" component={Contact} />
-        <Route path="/privacy" component={Privacy} />
-        <Route path="/terms" component={Terms} />
-        
-        {/* Protected routes - redirect to home if not authenticated */}
-        <Route path="/dashboard">
-          {user ? <ProviderDashboard /> : <Home />}
-        </Route>
-        <Route path="/new-appointment">
-          {user ? <ProviderDashboard /> : <Home />}
-        </Route>
-        <Route path="/memos">
-          {user ? <Memos /> : <Home />}
-        </Route>
-        <Route path="/tasks">
-          {user ? <Tasks /> : <Home />}
-        </Route>
-        <Route path="/my-bookings">
-          {user ? <MyBookings /> : <Home />}
-        </Route>
-        <Route path="/settings">
-          {user ? <ProviderSettings /> : <Home />}
-        </Route>
-        <Route path="/notifications">
-          {user ? <Notifications /> : <Home />}
-        </Route>
-        <Route path="/messages">
-          {user ? <Messages /> : <Home />}
-        </Route>
-        <Route path="/calendar">
-          {user ? <Calendar /> : <Home />}
-        </Route>
-        
-        {/* 404 */}
-        <Route component={NotFound} />
-      </Switch>
-    </div>
+    <AppLayout>
+      <Suspense fallback={<LoadingState label="Opening your page" />}>
+        <Switch>
+          <Route path="/" component={Home} />
+          <Route path="/login" component={Login} />
+          <Route path="/forgot-password" component={PasswordRecovery} />
+          <Route path="/reset-password" component={PasswordRecovery} />
+          <Route path="/payment-return" component={PaymentReturn} />
+          <Route path="/operations">
+            <AccountGate provider>
+              <OperationsPage />
+            </AccountGate>
+          </Route>
+          <Route path="/onboarding">
+            <AccountGate>
+              <Onboarding />
+            </AccountGate>
+          </Route>
+          <Route path="/find" component={FindProviders} />
+          <Route path="/book/:providerId" component={Booking} />
+          <Route path="/reviews/:providerId" component={Reviews} />
+          <Route
+            path="/confirmation/:appointmentId"
+            component={AppointmentConfirmation}
+          />
+          <Route path="/about" component={About} />
+          <Route path="/help" component={Help} />
+          <Route path="/contact" component={Contact} />
+          <Route path="/privacy" component={Privacy} />
+          <Route path="/terms" component={Terms} />
+          <Route path="/dashboard">
+            <AccountGate provider>
+              <ProviderDashboard />
+            </AccountGate>
+          </Route>
+          <Route path="/appointments">
+            <AccountGate provider>
+              <Appointments />
+            </AccountGate>
+          </Route>
+          <Route path="/services">
+            <AccountGate provider>
+              <Services />
+            </AccountGate>
+          </Route>
+          <Route path="/new-appointment">
+            <AccountGate provider>
+              <NewAppointment />
+            </AccountGate>
+          </Route>
+          <Route path="/memos">
+            <AccountGate provider>
+              <Memos />
+            </AccountGate>
+          </Route>
+          <Route path="/tasks">
+            <AccountGate provider>
+              <Tasks />
+            </AccountGate>
+          </Route>
+          <Route path="/my-bookings">
+            <AccountGate>
+              <MyBookings />
+            </AccountGate>
+          </Route>
+          <Route path="/settings">
+            <AccountGate provider>
+              <ProviderSettings />
+            </AccountGate>
+          </Route>
+          <Route path="/notifications">
+            <AccountGate>
+              <Activity />
+            </AccountGate>
+          </Route>
+          <Route path="/messages">
+            <AccountGate>
+              <Contacts />
+            </AccountGate>
+          </Route>
+          <Route path="/calendar">
+            <AccountGate provider>
+              <Calendar />
+            </AccountGate>
+          </Route>
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
+    </AppLayout>
   );
 }
-
-function App() {
+export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppRoutes />
+      <Toaster />
     </QueryClientProvider>
   );
 }
-
-export default App;

@@ -1,70 +1,52 @@
-import Navigation from "@/components/navigation";
-
+import { PageHeader } from "@/components/product-ui";
 export default function Privacy() {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-2">Privacy Policy</h1>
-          <p className="text-slate-600">Last updated: December 1, 2025</p>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-8 space-y-8">
-          <section>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">1. Introduction</h2>
-            <p className="text-slate-700 mb-4">
-              BookingPro ("we", "our", or "us") operates the BookingPro website and mobile application (collectively, the "Service"). This page informs you of our policies regarding the collection, use, and disclosure of personal data when you use our Service.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">2. Information Collection and Use</h2>
-            <p className="text-slate-700 mb-4">We collect several different types of information for various purposes to provide and improve our Service:</p>
-            <ul className="list-disc list-inside text-slate-700 space-y-2">
-              <li>Personal Data: Name, email address, phone number, postal address</li>
-              <li>Payment Information: Credit card details (processed securely through Stripe)</li>
-              <li>Usage Data: Browser type, IP address, pages visited, access times</li>
-              <li>Cookies: We use cookies to track user activity and preferences</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">3. Use of Data</h2>
-            <p className="text-slate-700 mb-4">BookingPro uses the collected data for various purposes:</p>
-            <ul className="list-disc list-inside text-slate-700 space-y-2">
-              <li>To provide and maintain our Service</li>
-              <li>To notify you about changes to our Service</li>
-              <li>To allow you to participate in interactive features of our Service</li>
-              <li>To provide customer support</li>
-              <li>To gather analysis or valuable information to improve our Service</li>
-              <li>To monitor the usage of our Service</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">4. Security of Data</h2>
-            <p className="text-slate-700">
-              The security of your data is important to us but remember that no method of transmission over the Internet or method of electronic storage is 100% secure. While we strive to use commercially acceptable means to protect your Personal Data, we cannot guarantee its absolute security.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">5. Changes to This Privacy Policy</h2>
-            <p className="text-slate-700">
-              We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "effective date" at the top of this Privacy Policy.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-bold text-slate-800 mb-4">6. Contact Us</h2>
-            <p className="text-slate-700">
-              If you have any questions about this Privacy Policy, please contact us at privacy@bookingpro.com or visit our Contact page.
-            </p>
-          </section>
-        </div>
-      </div>
+    <div className="public-container public-page prose-page">
+      <PageHeader
+        eyebrow="Your information"
+        title="Privacy notice"
+        description="How information is used in the current BookingPro application. Updated 20 November 2026."
+      />
+      <section className="card card-body">
+        <h2>Account and appointment information</h2>
+        <p>
+          The app stores the name and email you use for your account, a
+          protected password hash, your session, and the contact details and
+          notes you submit with a booking. A professional can see the
+          appointments booked with them, including the client details required
+          to arrange the visit.
+        </p>
+        <h2>Public profiles</h2>
+        <p>
+          A professional's published name, title, specialty, biography, contact
+          details, working hours and services are visible on their booking page
+          and in the directory. Do not put private client information in a
+          public profile or service description.
+        </p>
+        <h2>Private workspace records</h2>
+        <p>
+          Tasks and notes are scoped to the owning professional's account.
+          Signed-in clients can access their own booking history. A guest
+          confirmation uses the browser session that made the booking; keep a
+          copy of the details if you will need them later.
+        </p>
+        <h2>Sessions and hosting</h2>
+        <p>
+          A session cookie keeps you signed in and protects guest booking
+          access. Production cookies use Secure, HttpOnly and SameSite controls.
+          The application is hosted on Vercel and stores records and sessions in
+          Neon PostgreSQL. Request logs record request metadata rather than
+          booking response bodies.
+        </p>
+        <h2>Contact and changes</h2>
+        <p>
+          Use your professional's contact details for questions about an
+          appointment or the information provided for that service. Update your
+          professional profile in Settings. Automated account erasure and email
+          ownership verification are not currently offered. There is no
+          automatic deletion schedule presented by this application.
+        </p>
+      </section>
     </div>
   );
 }

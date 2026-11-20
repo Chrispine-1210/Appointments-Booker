@@ -1,91 +1,48 @@
-import Navigation from "@/components/navigation";
 import { Link } from "wouter";
-
+import { CalendarDays, BriefcaseBusiness, NotebookPen } from "lucide-react";
+import { PageHeader } from "@/components/product-ui";
 export default function About() {
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Navigation />
-      
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Hero */}
-        <div className="text-center mb-16">
-          <h1 className="text-5xl font-bold text-slate-800 mb-4">About BookingPro</h1>
-          <p className="text-xl text-slate-600">Revolutionizing professional appointment scheduling</p>
-        </div>
-
-        {/* Mission */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-          <h2 className="text-3xl font-bold text-slate-800 mb-4">Our Mission</h2>
-          <p className="text-slate-700 text-lg leading-relaxed">
-            BookingPro is dedicated to making appointment scheduling simple, efficient, and accessible for both professionals and clients. We believe that managing appointments shouldn't be complicated. Our platform combines intuitive design with powerful features to streamline the booking process for service providers and their clients.
-          </p>
-        </div>
-
-        {/* Why Choose Us */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-          <div className="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <i className="fas fa-rocket text-4xl text-primary mb-4"></i>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Fast & Easy</h3>
-            <p className="text-slate-600">Book appointments in seconds with our streamlined interface</p>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <i className="fas fa-shield-alt text-4xl text-primary mb-4"></i>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Secure & Private</h3>
-            <p className="text-slate-600">Your data is protected with enterprise-grade security</p>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-6 text-center">
-            <i className="fas fa-chart-line text-4xl text-primary mb-4"></i>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Grow Your Business</h3>
-            <p className="text-slate-600">Analytics and insights to help you manage better</p>
-          </div>
-        </div>
-
-        {/* Features */}
-        <div className="bg-white rounded-2xl shadow-lg p-8 mb-8">
-          <h2 className="text-3xl font-bold text-slate-800 mb-6">Key Features</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="flex items-start gap-4">
-              <i className="fas fa-calendar-check text-primary text-2xl mt-1 flex-shrink-0"></i>
-              <div>
-                <h3 className="font-bold text-slate-800 mb-1">Smart Scheduling</h3>
-                <p className="text-slate-600">Automated availability management and conflict detection</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <i className="fas fa-users text-primary text-2xl mt-1 flex-shrink-0"></i>
-              <div>
-                <h3 className="font-bold text-slate-800 mb-1">Client Management</h3>
-                <p className="text-slate-600">Track clients, bookings, and communication history</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <i className="fas fa-bell text-primary text-2xl mt-1 flex-shrink-0"></i>
-              <div>
-                <h3 className="font-bold text-slate-800 mb-1">Smart Reminders</h3>
-                <p className="text-slate-600">Automated reminders reduce no-shows</p>
-              </div>
-            </div>
-            <div className="flex items-start gap-4">
-              <i className="fas fa-star text-primary text-2xl mt-1 flex-shrink-0"></i>
-              <div>
-                <h3 className="font-bold text-slate-800 mb-1">Reviews & Ratings</h3>
-                <p className="text-slate-600">Build your reputation with verified client reviews</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CTA */}
-        <div className="bg-gradient-to-r from-primary to-blue-600 rounded-2xl shadow-lg p-12 text-white text-center">
-          <h2 className="text-3xl font-bold mb-4">Ready to Get Started?</h2>
-          <p className="text-lg mb-6">Join thousands of professionals using BookingPro to streamline their business</p>
-          <Link href="/find">
-            <button className="bg-white text-primary px-8 py-3 rounded-lg hover:bg-slate-100 transition-colors font-semibold text-lg">
-              Explore Now
-            </button>
-          </Link>
-        </div>
+    <div className="public-container public-page">
+      <PageHeader
+        eyebrow="Built around your working day"
+        title="Good work needs a little space."
+        description="BookingPro helps independent professionals bring their services, appointments and daily organisation into one clear workspace."
+      />
+      <div className="three-columns">
+        {[
+          {
+            icon: CalendarDays,
+            title: "One place for your schedule",
+            text: "A public booking page and a private calendar work together, so clients choose available times and you stay in control.",
+          },
+          {
+            icon: BriefcaseBusiness,
+            title: "Your practice, your details",
+            text: "Publish your services, set prices in MWK, choose your hours and keep your public profile current.",
+          },
+          {
+            icon: NotebookPen,
+            title: "The rest of your day, too",
+            text: "Keep client contacts, private notes and practical tasks near the appointments they support.",
+          },
+        ].map(({ icon: Icon, title, text }) => (
+          <article className="feature-card" key={title}>
+            <Icon size={28} />
+            <h2>{title}</h2>
+            <p>{text}</p>
+          </article>
+        ))}
       </div>
+      <section className="public-cta section-space">
+        <div>
+          <h2>Give your next client a simpler way in.</h2>
+          <p>Create your profile, add a service and share your booking page.</p>
+        </div>
+        <Link href="/login?mode=register&intent=provider" className="btn">
+          Set up your business
+        </Link>
+      </section>
     </div>
   );
 }

@@ -1,373 +1,294 @@
-import React, { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect, useState, type FormEvent } from "react";
+import { useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { z } from "zod";
-import { format, addDays, startOfWeek } from "date-fns";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+import { Calendar as DatePicker } from "@/components/ui/calendar";
+import type { Appointment, Provider, Service } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
-import type { Provider, Service } from "@shared/schema";
-
-const bookingSchema = z.object({
-  serviceId: z.number().min(1, "Please select a service"),
-  appointmentDate: z.string().min(1, "Please select a date"),
-  startTime: z.string().min(1, "Please select a time"),
-  clientName: z.string().min(1, "Name is required"),
-  clientEmail: z.string().email("Valid email is required"),
-  clientPhone: z.string().min(1, "Phone number is required"),
-  notes: z.string().optional(),
-});
-
-type BookingFormData = z.infer<typeof bookingSchema>;
-
-interface BookingFormProps {
+import { Field, LoadingState, ErrorState, EmptyState } from "./product-ui";
+import {
+  addMinutes,
+  localDate,
+  money,
+  prettyDate,
+  todayKey,
+} from "@/lib/booking-utils";
+export default function BookingForm({
+  provider,
+  prefillClient = true,
+}: {
   provider: Provider;
-}
-
-export default function BookingForm({ provider }: BookingFormProps) {
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>("");
-  const [selectedTime, setSelectedTime] = useState<string>("");
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-
-  // Get services for this provider
-  const { data: services = [] } = useQuery<Service[]>({
+  prefillClient?: boolean;
+}) {
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
+  const client = useQueryClient();
+  const [step, setStep] = useState(0);
+  const [serviceId, setServiceId] = useState<number | null>(null);
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [error, setError] = useState("");
+  const services = useQuery<Service[]>({
     queryKey: [`/api/providers/${provider.id}/services`],
   });
-
-  // Get available time slots for selected date
-  const { data: availableSlots = [] } = useQuery<string[]>({
-    queryKey: [`/api/providers/${provider.id}/available-slots`, { date: selectedDate }],
-    enabled: !!selectedDate,
+  const service = services.data?.find((s) => s.id === serviceId);
+  const slots = useQuery<string[]>({
+    queryKey: [
+      `/api/providers/${provider.id}/available-slots`,
+      { date, serviceId },
+    ],
+    enabled: !!serviceId && !!date,
+    staleTime: 0,
   });
-
-  const form = useForm<BookingFormData>({
-    resolver: zodResolver(bookingSchema),
-    defaultValues: {
-      serviceId: 0,
-      appointmentDate: "",
-      startTime: "",
-      clientName: "",
-      clientEmail: "",
-      clientPhone: "",
-      notes: "",
-    },
-  });
-
-  const createAppointmentMutation = useMutation({
-    mutationFn: async (data: BookingFormData) => {
-      if (!selectedService) throw new Error("No service selected");
-      
-      const appointmentData = {
+  useEffect(() => {
+    setTime("");
+  }, [date, serviceId]);
+  const mutation = useMutation({
+    mutationFn: async (form: FormData) => {
+      if (!service || !date || !time)
+        throw Error("Choose a service, date and available time.");
+      const data = {
         providerId: provider.id,
-        serviceId: data.serviceId,
-        appointmentDate: data.appointmentDate,
-        startTime: data.startTime,
-        endTime: calculateEndTime(data.startTime, selectedService.duration),
-        clientName: data.clientName,
-        clientEmail: data.clientEmail,
-        clientPhone: data.clientPhone,
-        notes: data.notes || "",
-        status: "confirmed" as const,
+        serviceId: service.id,
+        appointmentDate: date,
+        startTime: time,
+        endTime: addMinutes(time, service.duration),
+        clientName: String(form.get("clientName")),
+        clientEmail: String(form.get("clientEmail")),
+        clientPhone: String(form.get("clientPhone")),
+        notes: String(form.get("notes")),
       };
-
-      return apiRequest("POST", "/api/appointments", appointmentData);
+      return (
+        await apiRequest("POST", "/api/appointments", data)
+      ).json() as Promise<Appointment>;
     },
-    onSuccess: () => {
-      toast({
-        title: "Appointment Booked!",
-        description: "You will receive a confirmation email shortly.",
-      });
-      form.reset();
-      setSelectedService(null);
-      setSelectedDate("");
-      setSelectedTime("");
-      queryClient.invalidateQueries({ queryKey: [`/api/providers/${provider.id}/available-slots`] });
+    onSuccess: async (a) => {
+      await client.invalidateQueries();
+      navigate("/confirmation/" + a.id);
     },
-    onError: (error: any) => {
-      toast({
-        title: "Booking Failed",
-        description: error.message || "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
+    onError: () => {
+      void slots.refetch();
     },
   });
-
-  const calculateEndTime = (startTime: string, duration: number): string => {
-    const [hours, minutes] = startTime.split(":").map(Number);
-    const startMinutes = hours * 60 + minutes;
-    const endMinutes = startMinutes + duration;
-    const endHours = Math.floor(endMinutes / 60);
-    const endMins = endMinutes % 60;
-    return `${endHours.toString().padStart(2, "0")}:${endMins.toString().padStart(2, "0")}`;
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!service || !date || !time) {
+      setError("Choose your service, a working day and an available time.");
+      return;
+    }
+    setError("");
+    if (step === 0) setStep(1);
+    else mutation.mutate(new FormData(e.currentTarget));
   };
-
-  const generateWeekDates = () => {
-    const today = new Date();
-    return Array.from({ length: 14 }, (_, i) => addDays(today, i));
-  };
-
-  const onSubmit = (data: BookingFormData) => {
-    createAppointmentMutation.mutate(data);
-  };
-
+  const nowTime = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Blantyre",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date());
+  const available = (slots.data ?? []).filter(
+    (t) => date !== todayKey() || t > nowTime,
+  );
+  if (services.isLoading) return <LoadingState label="Loading services" />;
+  if (services.isError) return <ErrorState retry={() => services.refetch()} />;
+  if (!services.data?.length)
+    return (
+      <EmptyState
+        title="No services available yet"
+        description="This professional hasn't published a bookable service. Contact them directly or check back later."
+      />
+    );
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        {/* Service Selection */}
-        <FormField
-          control={form.control}
-          name="serviceId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Select Service</FormLabel>
-              <FormControl>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {services.map((service) => (
-                    <div
-                      key={service.id}
-                      className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover-scale ${
-                        field.value === service.id
-                          ? "border-primary bg-primary bg-opacity-5 shadow-inner"
-                          : "border-slate-100 hover:border-primary/50 bg-white"
-                      }`}
-                      onClick={() => {
-                        field.onChange(service.id);
-                        setSelectedService(service);
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="font-medium text-slate-800">{service.name}</div>
-                          <div className="text-sm text-slate-600">{service.duration} min</div>
-                        </div>
-                        <div className="text-primary font-semibold">${service.price}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Date Selection */}
-        <FormField
-          control={form.control}
-          name="appointmentDate"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="text-sm font-bold text-slate-700 uppercase tracking-wider">Select Date</FormLabel>
-              <FormControl>
-                <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar -mx-1 px-1">
-                  {generateWeekDates().map((date) => {
-                    const dateString = format(date, "yyyy-MM-dd");
-                    const isToday = format(date, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
-                    const isPast = date < new Date() && !isToday;
-                    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-
-                    return (
-                      <button
-                        key={dateString}
-                        type="button"
-                        disabled={isPast || isWeekend}
-                        className={`flex-shrink-0 w-16 p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${
-                          field.value === dateString
-                            ? "bg-primary text-white border-primary shadow-lg shadow-primary/25 scale-105"
-                            : isPast
-                            ? "border-slate-100 opacity-30 cursor-not-allowed bg-slate-50"
-                            : "border-slate-100 bg-white hover:border-primary/50 hover:shadow-md"
-                        }`}
-                        onClick={() => {
-                          field.onChange(dateString);
-                          setSelectedDate(dateString);
-                          form.setValue("startTime", "");
-                          setSelectedTime("");
-                        }}
-                      >
-                        <span className="text-[10px] font-black uppercase tracking-widest opacity-60">
-                          {format(date, "EEE")}
-                        </span>
-                        <span className="text-lg font-black leading-none">
-                          {format(date, "d")}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Time Selection */}
-        {selectedDate && (
-          <FormField
-            control={form.control}
-            name="startTime"
-            render={({ field }) => (
-              <FormItem className="animate-in fade-in slide-in-from-top-4 duration-500">
-                <FormLabel className="text-sm font-bold text-slate-700 uppercase tracking-wider">Select Time</FormLabel>
-                <FormControl>
-                  {availableSlots.length > 0 ? (
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                      {availableSlots.map((time) => (
-                        <button
-                          key={time}
-                          type="button"
-                          className={`p-4 text-sm font-black border-2 rounded-xl transition-all ${
-                            field.value === time
-                              ? "bg-primary text-white border-primary shadow-lg shadow-primary/25"
-                              : "border-slate-100 bg-white hover:border-primary/50"
-                          }`}
-                          onClick={() => {
-                            field.onChange(time);
-                            setSelectedTime(time);
-                          }}
-                        >
-                          {time}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-8 bg-slate-50 rounded-2xl text-center text-slate-400 font-medium">
-                      <i className="fas fa-calendar-times text-2xl mb-2 block opacity-20"></i>
-                      No slots available for this date.
-                    </div>
-                  )}
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-
-        {/* Client Information */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="clientName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Full Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="John Smith" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="clientPhone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Phone Number</FormLabel>
-                <FormControl>
-                  <Input placeholder="(555) 123-4567" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+    <form className="booking-form" onSubmit={submit}>
+      <p className="booking-step-label">
+        {step === 0 ? "Choose your appointment" : "Your details & confirmation"}{" "}
+        · Step {step + 1} of 2
+      </p>
+      <div hidden={step !== 0}>
+        <h2>What can we help you with?</h2>
+        <div className="service-options section-space">
+          {services.data.map((s) => (
+            <button
+              className={
+                "service-choice " + (serviceId === s.id ? "selected" : "")
+              }
+              type="button"
+              aria-pressed={serviceId === s.id}
+              key={s.id}
+              onClick={() => setServiceId(s.id)}
+            >
+              <span>
+                <strong>{s.name}</strong>
+                <small>
+                  {s.duration} minutes
+                  {s.description ? " · " + s.description : ""}
+                </small>
+              </span>
+              <span>{money(s.price)}</span>
+            </button>
+          ))}
         </div>
-
-        <FormField
-          control={form.control}
-          name="clientEmail"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email Address</FormLabel>
-              <FormControl>
-                <Input type="email" placeholder="john@example.com" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="notes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Additional Notes (Optional)</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Any specific concerns or questions?"
-                  rows={3}
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Booking Summary */}
-        {selectedService && selectedDate && selectedTime && (
-          <div className="bg-slate-50 rounded-lg p-6">
-            <h4 className="font-semibold text-slate-800 mb-4">Booking Summary</h4>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-600">Service:</span>
-                <span className="font-medium">{selectedService.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Date:</span>
-                <span className="font-medium">{format(new Date(selectedDate), "EEEE, MMMM d")}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Time:</span>
-                <span className="font-medium">{selectedTime}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-600">Duration:</span>
-                <span className="font-medium">{selectedService.duration} minutes</span>
-              </div>
-              <div className="border-t border-slate-200 pt-2 mt-2">
-                <div className="flex justify-between font-semibold">
-                  <span>Total:</span>
-                  <span className="text-primary">${selectedService.price}</span>
-                </div>
-              </div>
-            </div>
+        <h2 className="section-space">Find your time.</h2>
+        <div className="two-columns section-space">
+          <div style={{ border: "1px solid #e5ebf5", borderRadius: 10 }}>
+            <DatePicker
+              mode="single"
+              selected={date ? localDate(date) : undefined}
+              onSelect={(value) => {
+                if (value) setDate(format(value, "yyyy-MM-dd"));
+              }}
+              disabled={(day) =>
+                format(day, "yyyy-MM-dd") < todayKey() ||
+                !provider.workingHours?.days.includes(day.getDay())
+              }
+            />
           </div>
-        )}
-
-        {/* Submit Button */}
-        <div className="sticky bottom-0 pt-8 pb-4 bg-white/90 backdrop-blur-md -mx-8 px-8 border-t border-slate-50 mt-4 z-20">
-          <Button
-            type="submit"
-            className="w-full h-14 rounded-2xl text-lg font-black shadow-xl shadow-primary/20 hover:scale-[1.02] transition-all active:scale-95"
-            disabled={createAppointmentMutation.isPending}
-          >
-            {createAppointmentMutation.isPending ? (
+          <div>
+            <p className="small muted">
+              {date
+                ? prettyDate(date)
+                : "Choose a working day to see available times."}
+            </p>
+            {slots.isLoading ? (
+              <LoadingState label="Checking availability" />
+            ) : slots.isError ? (
+              <ErrorState retry={() => slots.refetch()} />
+            ) : date && service ? (
               <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                Securing Your Spot...
+                {available.length ? (
+                  <div className="slot-grid">
+                    {available.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        className={time === t ? "selected" : ""}
+                        aria-pressed={time === t}
+                        onClick={() => setTime(t)}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="notice">
+                    No available times on this day. Try another date.
+                  </p>
+                )}
               </>
             ) : (
-              <>
-                <i className="fas fa-calendar-check mr-3"></i>
-                Book Now • ${selectedService?.price || '0'}
-              </>
+              <p className="notice">Select a service and date to continue.</p>
             )}
-          </Button>
+            <p className="small muted section-space">
+              All times in Malawi (CAT, UTC+02:00).
+            </p>
+          </div>
         </div>
-
-        <p className="text-xs text-slate-500 text-center">
-          By booking, you agree to our terms of service and privacy policy. You'll receive a confirmation email shortly.
+      </div>
+      <div hidden={step !== 1}>
+        <h2>A few details, and you're booked.</h2>
+        <div className="form-stack section-space">
+          <Field label="Your full name">
+            <input
+              name="clientName"
+              autoComplete="name"
+              required={step === 1}
+              maxLength={200}
+              defaultValue={
+                user && prefillClient
+                  ? (
+                      (user.firstName ?? "") +
+                      " " +
+                      (user.lastName ?? "")
+                    ).trim()
+                  : ""
+              }
+            />
+          </Field>
+          <div className="form-grid">
+            <Field label="Email address">
+              <input
+                name="clientEmail"
+                type="email"
+                autoComplete="email"
+                required={step === 1}
+                defaultValue={prefillClient ? (user?.email ?? "") : ""}
+              />
+            </Field>
+            <Field label="Phone number">
+              <input
+                name="clientPhone"
+                type="tel"
+                autoComplete="tel"
+                required={step === 1}
+                maxLength={40}
+                placeholder="+265…"
+              />
+            </Field>
+          </div>
+          <Field label="A note for your professional (optional)">
+            <textarea
+              name="notes"
+              maxLength={5000}
+              placeholder="Anything they should know before your visit?"
+            />
+          </Field>
+        </div>
+      </div>
+      {service && date && time && (
+        <div className="booking-summary">
+          <div className="spread">
+            <strong>{service.name}</strong>
+            <strong>{money(service.price)}</strong>
+          </div>
+          <div className="spread">
+            <span>{prettyDate(date, true)}</span>
+            <span>
+              {time} – {addMinutes(time, service.duration)} CAT
+            </span>
+          </div>
+          <p className="small muted" style={{ margin: "12px 0 0" }}>
+            Payment is arranged directly with your professional. This booking
+            does not charge a card.
+          </p>
+        </div>
+      )}
+      {(error || mutation.error) && (
+        <p className="form-error" role="alert">
+          {error || mutation.error?.message}
         </p>
-      </form>
-    </Form>
+      )}
+      <div className="booking-actions">
+        {step === 1 ? (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setStep(0)}
+          >
+            Back to times
+          </button>
+        ) : (
+          <span />
+        )}
+        <button
+          disabled={
+            mutation.isPending || (step === 0 && (!service || !date || !time))
+          }
+          className="btn btn-primary"
+        >
+          {mutation.isPending
+            ? "Reserving your time…"
+            : step === 0
+              ? "Continue to details"
+              : "Confirm appointment"}
+        </button>
+      </div>
+      {step === 1 && (
+        <p className="small muted section-space">
+          Your appointment is confirmed on screen. Keep the confirmation and add
+          it to your calendar.
+        </p>
+      )}
+    </form>
   );
 }
